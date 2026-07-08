@@ -828,6 +828,37 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0, y: 0}
+--- !u!1 &293222112
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 293222113}
+  m_Layer: 0
+  m_Name: NetworkPlayer
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &293222113
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 293222112}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 675, y: 306, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &352694247
 GameObject:
   m_ObjectHideFlags: 0
@@ -840,7 +871,7 @@ GameObject:
   - component: {fileID: 352694250}
   - component: {fileID: 352694249}
   m_Layer: 5
-  m_Name: EntryID
+  m_Name: matchingID
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3012,6 +3043,8 @@ MonoBehaviour:
   matchingPanel: {fileID: 1515474999}
   matchedPanel: {fileID: 2028965411}
   errorText: {fileID: 1164871915}
+  matchingIDText: {fileID: 352694249}
+  matchingNameText: {fileID: 1556111948}
 --- !u!1 &1415742438
 GameObject:
   m_ObjectHideFlags: 0
@@ -3524,7 +3557,7 @@ GameObject:
   - component: {fileID: 1556111949}
   - component: {fileID: 1556111948}
   m_Layer: 5
-  m_Name: EntryName
+  m_Name: matchingName
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -5167,6 +5200,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   networkRunnerPrefab: {fileID: 8557952244947587144, guid: 6a269b68c99dbf841a53d67c352e180c, type: 3}
+  networkPlayerPrefab:
+    RawGuidValue: 00000000000000000000000000000000
 --- !u!4 &4549810713451910445
 Transform:
   m_ObjectHideFlags: 0
@@ -5209,3 +5244,4 @@ SceneRoots:
   - {fileID: 1126386625}
   - {fileID: 1237666604}
   - {fileID: 4549810713451910445}
+  - {fileID: 293222113}

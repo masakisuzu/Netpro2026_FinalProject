@@ -1,8 +1,9 @@
+using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using R3;
+using Script.Button;
 using Script.Network;
-using Script.UI.Button;
 using TMPro;
 
 namespace Script.UI.View
@@ -25,7 +26,11 @@ namespace Script.UI.View
         [SerializeField] private GameObject checkInPanel; // ID,名前を入力する枠
         [SerializeField] private GameObject matchingPanel; // マッチング中…
         [SerializeField] private GameObject matchedPanel; // 参加者一覧を表示する枠
+        
+        [Header("Text表示クラス")]
         [SerializeField] private TextMeshProUGUI errorText;
+        [SerializeField] private TextMeshProUGUI matchingIDText;
+        [SerializeField] private TextMeshProUGUI matchingNameText;
         
         
         /// <summary>
@@ -56,6 +61,10 @@ namespace Script.UI.View
             // ネットワーク側からの結果通知を購読
             JankenNetworkManager.Instance.OnMatchingResult
                 .Subscribe(OnMatchingResult)
+                .AddTo(this);
+            
+            JankenNetworkManager.Instance.Players
+                .Subscribe(UpdatePlayerList)
                 .AddTo(this);
         }
         
@@ -90,11 +99,13 @@ namespace Script.UI.View
             checkInPanel.SetActive(true);
         }
         
-        private void ShowMatchingPanel()
+        private void ShowMatchingPanel(string id, string name)
         {
             HiddenAllPanel();
             guidePanel.SetActive(true); // マッチング中もガイド表示
             matchingPanel.SetActive(true);
+            matchingIDText.text = $"ID: {id}"; // 入力したテキスト情報更新
+            matchingNameText.text = $"NAME: {name}";
         }
         
         private void ShowMatchedPanel()
@@ -126,14 +137,20 @@ namespace Script.UI.View
             }
             
             // マッチング中と表示
-            ShowMatchingPanel();
+            ShowMatchingPanel(roomId, playerName);
             
             // ネットワークオブジェクトを呼んでネット接続開始！表示に関する結果はR3で発火させて受け取る
             JankenNetworkManager.Instance.EnterRoomAsync(roomId, playerName).Forget();
         }
         
+        private void UpdatePlayerList(List<NetworkPlayer> players)
+        {
+            // var names = players.Select(p => p.PlayerName.ToString());
+            // Debug.Log(names);
+        }
+        
         /// <summary>
-        /// ネットワークからの結果通知（EnterRoomAsync完了後に呼ばれる想定）
+        /// マッチングの結果通知（EnterRoomAsync完了後に呼ばれる想定）
         /// </summary>
         private void OnMatchingResult(MatchingResult result)
         {

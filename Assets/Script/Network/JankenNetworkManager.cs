@@ -9,29 +9,20 @@ using UnityEngine;
 
 namespace Script.Network
 {
-    public enum MatchingResultType { Success, Error }
-
-    public readonly struct MatchingResult
-    {
-        public readonly MatchingResultType Type;
-        public readonly string Message;
-
-        public MatchingResult(MatchingResultType type, string message)
-        {
-            Type = type;
-            Message = message;
-        }
-    }
-
     public class JankenNetworkManager : MonoBehaviour, INetworkRunnerCallbacks
     {
         public static JankenNetworkManager Instance { get; private set; }
 
         [SerializeField] private NetworkRunner networkRunnerPrefab; // Fusionの心臓、通信の中心
-        public NetworkRunner Runner { get; private set; } // その心臓を生成（ネットワーク処理を開始）したらここで管理
+        [SerializeField] private NetworkPrefabRef networkPlayerPrefab;
+        public NetworkRunner Runner { get; private set; } // networkRunnerPrefabを生成（ネットワーク処理を開始）したらここで管理
 
-        public string PlayerName { get; private set; } = "";
+        public string PlayerName { get; private set; } = ""; // 詳細(PlayerInfo)を外部から参照するためにも必要
         public string RoomId { get; private set; } = "";
+        
+        // 参加者一覧。値が変わる度、表示も更新させたいので購読対象にする
+        private readonly ReactiveProperty<List<NetworkPlayer>> _players = new(new List<NetworkPlayer>());
+        public ReadOnlyReactiveProperty<List<NetworkPlayer>> Players => _players; // 外部参照用
 
         private const int MaxCCULimit = 20; // Fusion FREEプラン上限
         private int _totalEstimatedConnections; // 現在の参加人数
@@ -43,14 +34,12 @@ namespace Script.Network
         private readonly Subject<MatchingResult> _onMatchingResult = new();
         public Observable<MatchingResult> OnMatchingResult => _onMatchingResult;
         
-        
-        private CancellationTokenSource _cts;
-        
-        private void OnDestroy()
-        {
-            _cts?.Cancel();
-            _cts?.Dispose();
-        }
+        // private CancellationTokenSource _cts;
+        // private void OnDestroy()
+        // {
+        //     _cts?.Cancel();
+        //     _cts?.Dispose();
+        // }
 
         private void Awake()
         {
@@ -70,13 +59,15 @@ namespace Script.Network
         /// ネット上に部屋は常に1つだけという制約を守るため、
         /// StartGameを呼ぶ前に既存の部屋の有無・IDをチェックする。
         /// </summary>
-        public async UniTask EnterRoomAsync(string desiredRoomId, string playerName, CancellationToken ct = default)
+        public async UniTask EnterRoomAsync(string desiredRoomId, string playerName)
         {
             Runner = Instantiate(networkRunnerPrefab);
             Runner.ProvideInput = true; // 送信を許可する
             Runner.AddCallbacks(this); // 通信結果をthis(JankenNetworkManagerクラス)に伝える
             
-            _cts = new CancellationTokenSource();
+            // _cts?.Cancel();
+            // _cts?.Dispose();
+            // _cts = new CancellationTokenSource();
             
             // OnSessionListUpdated から部屋一覧を受け取るための待機オブジェクト
             _sessionListTcs = new UniTaskCompletionSource<List<SessionInfo>>();
@@ -143,6 +134,7 @@ namespace Script.Network
             var result = await Runner.StartGame(args);
             if (result.Ok)
             {
+                Runner.Spawn(networkPlayerPrefab, inputAuthority: Runner.LocalPlayer); // このNetworkObjectの入力権限を誰が持つかを指定する
                 _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Success, $"入室しました（現在{Runner.SessionInfo.PlayerCount}人）"));
             }
             else
@@ -159,6 +151,34 @@ namespace Script.Network
             {
                 Runner.Shutdown();
             }
+        }
+        
+        /// <summary>
+        /// NetworkPlayerがSpawnされた時に呼ばれ、参加者リストに追加する
+        /// </summary>
+        public void RegisterPlayer(NetworkPlayer player)
+        {
+            var list = new List<NetworkPlayer>(_players.CurrentValue) { player };
+            _players.Value = list;
+        }
+
+        /// <summary>
+        /// NetworkPlayerがDespawnされた時に呼ばれ、参加者リストから除外する
+        /// </summary>
+        public void UnregisterPlayer(NetworkPlayer player)
+        {
+            var list = new List<NetworkPlayer>(_players.CurrentValue);
+            list.Remove(player);
+            _players.Value = list;
+        }
+
+        /// <summary>
+        /// リスト自体の中身（Networked値）が後から変わった時に、表示側へ再通知するため
+        /// リストの参照を新しく作り直して再発火させる
+        /// </summary>
+        public void RefreshPlayerList()
+        {
+            _players.Value = new List<NetworkPlayer>(_players.CurrentValue);
         }
 
         // ------------------------ INetworkRunnerCallbacks ------------------------
@@ -189,8 +209,15 @@ namespace Script.Network
             _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Error, reason.ToString()));
         }
 
-        void INetworkRunnerCallbacks.OnPlayerJoined(NetworkRunner runner, PlayerRef player) { }
-        void INetworkRunnerCallbacks.OnPlayerLeft(NetworkRunner runner, PlayerRef player) { }
+        void INetworkRunnerCallbacks.OnPlayerJoined(NetworkRunner runner, PlayerRef player)
+        {
+            
+        }
+
+        void INetworkRunnerCallbacks.OnPlayerLeft(NetworkRunner runner, PlayerRef player)
+        {
+            
+        }
         void INetworkRunnerCallbacks.OnConnectedToServer(NetworkRunner runner) { }
         void INetworkRunnerCallbacks.OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason) { }
         void INetworkRunnerCallbacks.OnInput(NetworkRunner runner, NetworkInput input) { }

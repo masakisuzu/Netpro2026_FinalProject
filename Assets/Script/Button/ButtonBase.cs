@@ -2,7 +2,7 @@ using R3;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
-namespace Script.UI.Button
+namespace Script.Button
 {
     /// <summary>
     /// 共通のボタン処理

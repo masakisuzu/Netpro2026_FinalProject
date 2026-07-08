@@ -1,4 +1,4 @@
-using Script.UI.Button;
+using Script.Button;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
