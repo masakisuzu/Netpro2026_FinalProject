@@ -13,8 +13,8 @@ namespace Script.Network
     {
         public static JankenNetworkManager Instance { get; private set; }
 
-        [SerializeField] private NetworkRunner networkRunnerPrefab; // Fusionの心臓、通信の中心
-        [SerializeField] private NetworkPrefabRef networkPlayerPrefab;
+        [SerializeField] private NetworkRunner networkRunnerPrefab; // Fusion自体のエンジン、ゲームロジックとは違うネットワーク接続そのもの
+        [SerializeField] private NetworkPrefabRef networkPlayerPrefab; // 電話で話している内容そのもの。ネットワーク経由で名前等、伝えたい情報を送り合える
         public NetworkRunner Runner { get; private set; } // networkRunnerPrefabを生成（ネットワーク処理を開始）したらここで管理
 
         public string PlayerName { get; private set; } = ""; // 詳細(PlayerInfo)を外部から参照するためにも必要
@@ -24,7 +24,7 @@ namespace Script.Network
         private readonly ReactiveProperty<List<NetworkPlayer>> _players = new(new List<NetworkPlayer>());
         public ReadOnlyReactiveProperty<List<NetworkPlayer>> Players => _players; // 外部参照用
 
-        private const int MaxCCULimit = 20; // Fusion FREEプラン上限
+        public const int MaxCCULimit = 100; // Fusion FREEプラン上限（1つのプロジェクトだけ）
         private int _totalEstimatedConnections; // 現在の参加人数
 
         // セッション一覧を「一度だけ」受け取るための待機用
@@ -33,13 +33,6 @@ namespace Script.Network
         // マッチング処理の結果をViewクラスに伝えるための発火装置（Viewクラスが購読して待機している）
         private readonly Subject<MatchingResult> _onMatchingResult = new();
         public Observable<MatchingResult> OnMatchingResult => _onMatchingResult;
-        
-        // private CancellationTokenSource _cts;
-        // private void OnDestroy()
-        // {
-        //     _cts?.Cancel();
-        //     _cts?.Dispose();
-        // }
 
         private void Awake()
         {
@@ -134,7 +127,9 @@ namespace Script.Network
             var result = await Runner.StartGame(args);
             if (result.Ok)
             {
-                Runner.Spawn(networkPlayerPrefab, inputAuthority: Runner.LocalPlayer); // このNetworkObjectの入力権限を誰が持つかを指定する
+                // Fusion（ネットワーク越し）での生成は instantiate ではなくSpawn
+                // そのNetworkObjectの入力権限を誰が持つかを指定する。Spawn本人に持たせたいので自分を指定
+                Runner.Spawn(networkPlayerPrefab, inputAuthority: Runner.LocalPlayer);
                 _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Success, $"入室しました（現在{Runner.SessionInfo.PlayerCount}人）"));
             }
             else
@@ -154,30 +149,59 @@ namespace Script.Network
         }
         
         /// <summary>
+        /// Readyボタンから呼ばれる。自分自身のNetworkPlayerのIsReadyをtrueにする
+        /// 参加者リストの中から、自分自身が所有している NetworkPlayer を探す
+        /// Spawnの際に権限を与えて自分のものだと明示した NetworkPlayer のこと
+        /// </summary>
+        public void SetLocalPlayerReady()
+        {
+            foreach (var player in _players.CurrentValue)
+            {
+                if (player.Object.HasStateAuthority) 
+                    player.SetReady();
+            }
+        }
+        
+        // -------------------- 参加者リストの更新系（R3発火でViewも変わる） --------------------
+        
+        /// <summary>
+        /// 自分が参加した時に呼ぶ
         /// NetworkPlayerがSpawnされた時に呼ばれ、参加者リストに追加する
         /// </summary>
         public void RegisterPlayer(NetworkPlayer player)
         {
-            var list = new List<NetworkPlayer>(_players.CurrentValue) { player };
+            // 既存のリストの中身を全部コピーして、新しいリストを再生成
+            var list = new List<NetworkPlayer>(_players.CurrentValue);
+    
+            // 新しく作ったリストにplayerを追加する
+            list.Add(player);
+    
+            // .Valueに代入してR3発火
             _players.Value = list;
+            
+            // この書き方だと通知いかないらしい。だから新しいリスト丸ごとを用意する必要があった
+            // _players.CurrentValue.Add(player);
         }
 
         /// <summary>
+        /// 誰かが退出した時に呼ぶ
         /// NetworkPlayerがDespawnされた時に呼ばれ、参加者リストから除外する
         /// </summary>
         public void UnregisterPlayer(NetworkPlayer player)
         {
+            // RegisterPlayer と同じ手順で今度は Remove
             var list = new List<NetworkPlayer>(_players.CurrentValue);
             list.Remove(player);
             _players.Value = list;
         }
 
         /// <summary>
-        /// リスト自体の中身（Networked値）が後から変わった時に、表示側へ再通知するため
-        /// リストの参照を新しく作り直して再発火させる
+        /// 他が参加してきたときに呼ぶ
+        /// リスト自体の中身（Networked値）が後から変わった時に、表示側へ再通知する用
         /// </summary>
         public void RefreshPlayerList()
         {
+            // 今のリストをそのまま再代入
             _players.Value = new List<NetworkPlayer>(_players.CurrentValue);
         }
 
