@@ -8,20 +8,21 @@ namespace Script.Network
     /// </summary>
     public class NetworkPlayer : NetworkBehaviour
     {
-        [Networked, OnChangedRender(nameof(OnPlayerNameChanged))]
+        [Networked] 
         public NetworkString<_16> PlayerName { get; set; }
-
-        [Networked]
-        public NetworkBool IsReady { get; set; } // 準備OKかどうか
+        
+        [Networked, OnChangedRender(nameof(OnIsReadyChanged))] // IsReadyの値が変わったら OnIsReadyChanged が呼ばれる
+        public NetworkBool IsReady { get; set; }
     
         public override void Spawned()
         {
+            // 生成されたら情報をステータスを受け取りに行く
             if (Object.HasStateAuthority)
             {
                 PlayerName = JankenNetworkManager.Instance.PlayerName;
             }
         
-            // 生成されたら全クライアントで参加者リストに登録する
+            // 全クライアントの参加者リストに登録する
             JankenNetworkManager.Instance.RegisterPlayer(this);
         }
     
@@ -29,14 +30,20 @@ namespace Script.Network
         {
             JankenNetworkManager.Instance.UnregisterPlayer(this);
         }
-    
-        /// <summary>
-        /// PlayerNameがネットワーク経由で同期された時に呼ばれる（自分以外の値が届いた時など）
-        /// リスト自体の参照は変わらないので、表示側に更新を伝えるためにリスト再発火させる
-        /// </summary>
-        private void OnPlayerNameChanged()
+        
+        private void OnIsReadyChanged()
         {
             JankenNetworkManager.Instance.RefreshPlayerList();
+        }
+        
+        /// <summary>
+        /// 自分自身のReady状態をtrueにする
+        /// StateAuthorityを持つ本人しか呼べない！
+        /// </summary>
+        public void SetReady()
+        {
+            if (Object.HasStateAuthority) 
+                IsReady = true;
         }
     }
 }

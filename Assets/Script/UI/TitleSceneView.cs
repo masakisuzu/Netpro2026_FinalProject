@@ -6,7 +6,7 @@ using Script.Button;
 using Script.Network;
 using TMPro;
 
-namespace Script.UI.View
+namespace Script.UI
 {
     public class TitleSceneView : MonoBehaviour
     {
@@ -32,6 +32,14 @@ namespace Script.UI.View
         [SerializeField] private TextMeshProUGUI matchingIDText;
         [SerializeField] private TextMeshProUGUI matchingNameText;
         
+        [Header("メンバー一覧")]
+        [SerializeField] private Transform memberListContainer; // Vertical Layout Groupを付けた親。memberListItemPrefab一覧を持つ
+        [SerializeField] private MemberListItemView memberListItemPrefab;
+        [SerializeField] private TextMeshProUGUI memberNumText;
+        [SerializeField] private TextMeshProUGUI roomIdText;
+        
+        // どのNetworkPlayerがどのUI行に対応しているかを覚えておく
+        private readonly Dictionary<NetworkPlayer, MemberListItemView> _memberItems = new();
         
         /// <summary>
         /// ゲーム起動後はここから始まる
@@ -52,11 +60,9 @@ namespace Script.UI.View
                 .Subscribe(_ => TryEnterRoom().Forget())
                 .AddTo(this);
             
-            /*
             readyButton.OnClickAsObservable
-                .Subscribe(_ => TryEnterRoom())
+                .Subscribe(_ => JankenNetworkManager.Instance.SetLocalPlayerReady())
                 .AddTo(this);
-                */
             
             // ネットワーク側からの結果通知を購読
             JankenNetworkManager.Instance.OnMatchingResult
@@ -64,7 +70,7 @@ namespace Script.UI.View
                 .AddTo(this);
             
             JankenNetworkManager.Instance.Players
-                .Subscribe(UpdatePlayerList)
+                .Subscribe(UpdateMatchedList)
                 .AddTo(this);
         }
         
@@ -143,10 +149,49 @@ namespace Script.UI.View
             JankenNetworkManager.Instance.EnterRoomAsync(roomId, playerName).Forget();
         }
         
-        private void UpdatePlayerList(List<NetworkPlayer> players)
+        /// <summary>
+        /// JankenNetworkManager の Register / UnRegister / Refresh によるR3発火で処理を呼ぶ
+        /// 差分だけを更新して大人数に対応
+        /// </summary>
+        private void UpdateMatchedList(List<NetworkPlayer> players)
         {
-            // var names = players.Select(p => p.PlayerName.ToString());
-            // Debug.Log(names);
+            // 人数表示
+            memberNumText.text = $"{players.Count} / {JankenNetworkManager.MaxCCULimit}";
+            
+            // Id表示（毎回呼ぶ必要ないけどまあいいか）
+            roomIdText.text = $"ID: {JankenNetworkManager.Instance.RoomId}";
+            
+            // 退出した人のUI行だけを消す（今回のplayersに含まれていないキーを探す）
+            var removedPlayers = new List<NetworkPlayer>();
+            foreach (var existingPlayer in _memberItems.Keys)
+            {
+                if (!players.Contains(existingPlayer))
+                {
+                    removedPlayers.Add(existingPlayer);
+                }
+            }
+            foreach (var removedPlayer in removedPlayers)
+            {
+                Destroy(_memberItems[removedPlayer].gameObject);
+                _memberItems.Remove(removedPlayer);
+            }
+
+            // 全員分ループし、新規は作成、既存は表示内容だけ更新
+            foreach (var player in players)
+            {
+                if (_memberItems.TryGetValue(player, out var item))
+                {
+                    // 既に行がある→中身だけ更新（Instantiateしない）
+                    item.SetData(player.PlayerName.ToString(), player.IsReady);
+                }
+                else
+                {
+                    // 新規参加者→行を1つだけ新しく作る
+                    var newItem = Instantiate(memberListItemPrefab, memberListContainer);
+                    newItem.SetData(player.PlayerName.ToString(), player.IsReady);
+                    _memberItems.Add(player, newItem);
+                }
+            }
         }
         
         /// <summary>
