@@ -6,12 +6,13 @@ namespace Script.Network
     /// マッチング成功時にSpawn()される
     /// プレイヤー情報を持つネットワーククラス
     /// </summary>
-    public class NetworkPlayer : NetworkBehaviour
+    public class TitlePlayer : NetworkBehaviour
     {
         [Networked] 
         public NetworkString<_16> PlayerName { get; set; }
         
-        [Networked, OnChangedRender(nameof(OnIsReadyChanged))] // IsReadyの値が変わったら OnIsReadyChanged が呼ばれる
+        // IsReadyの値が変わったらこのメソッドを呼ぶ（Fusion限定機能）
+        [Networked, OnChangedRender(nameof(OnIsReadyChanged))] 
         public NetworkBool IsReady { get; set; }
     
         public override void Spawned()
@@ -19,21 +20,25 @@ namespace Script.Network
             // 生成されたら情報をステータスを受け取りに行く
             if (Object.HasStateAuthority)
             {
-                PlayerName = JankenNetworkManager.Instance.PlayerName;
+                PlayerName = JankenNetworkManager.Instance.PlayerName; // 永続クラスから名前だけ借りる
             }
         
             // 全クライアントの参加者リストに登録する
-            JankenNetworkManager.Instance.RegisterPlayer(this);
+            TitleMatchingManager.Instance.RegisterPlayer(this);
         }
     
         public override void Despawned(NetworkRunner runner, bool hasState)
         {
-            JankenNetworkManager.Instance.UnregisterPlayer(this);
+            TitleMatchingManager.Instance.UnregisterPlayer(this);
         }
         
+        /// <summary>
+        /// IsReadyの値が変わったら OnIsReadyChanged が呼ばれる
+        /// </summary>
         private void OnIsReadyChanged()
         {
-            JankenNetworkManager.Instance.RefreshPlayerList();
+            TitleMatchingManager.Instance.RefreshPlayerList();
+            TitleMatchingManager.Instance.CheckAllReadyAndStartGame();
         }
         
         /// <summary>
