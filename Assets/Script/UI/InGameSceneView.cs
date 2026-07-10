@@ -3,120 +3,88 @@ using R3;
 using TMPro;
 using UnityEngine;
 using Script.Network;
+using UnityEngine.UI;
 
 namespace Script.UI
 {
     public class InGameSceneView : MonoBehaviour
     {
-        [Header("メンバー一覧")]
-        [SerializeField] private Transform memberListContainer;
-        [SerializeField] private InGameMemberStateView memberStatePrefab;
+        [Header("Thinkingフェーズ")]
+        [SerializeField] private GameObject thinkingPanel;
+        [SerializeField] private Image timerGauge;
+        [SerializeField] private TextMeshProUGUI turnText;
+        [SerializeField] private TextMeshProUGUI memberNumText;
         
-        [Header("遷移時のカウントダウン表示")]
-        [SerializeField] private GameObject countdownPanel;
-        [SerializeField] private TextMeshProUGUI countdownText;
+        [Header("CountDownフェーズ")]
+        [SerializeField] private GameObject countDownPanel;
+        [SerializeField] private TextMeshProUGUI countText;
         
-        [Header("ボタン表示クラス")]
-
-        [Header("UI表示クラス")]
-        [SerializeField] private GameObject rockButton;
-        [SerializeField] private GameObject scissorsButton;
-        [SerializeField] private GameObject paperButton;
-        
-        [Header("テキスト表示クラス")]
-        [SerializeField] private TextMeshProUGUI roundTimerText;
-
-        private readonly Dictionary<InGamePlayer, InGameMemberStateView> _memberStates = new();
-        private RoundPhase _currentPhase = RoundPhase.WaitingForReady;
-
         private void Start()
         {
-            InGameNetworkManager.Instance.Players
-                .Subscribe(UpdateMemberList)
-                .AddTo(this);
-
+            // Phaseが変わったら呼んでほしい処理として登録
             InGameNetworkManager.Instance.OnPhaseChanged
                 .Subscribe(OnPhaseChanged)
                 .AddTo(this);
-
-            // ぐーちょきぱーボタンの入力受付はまた別途実装（今回はUI表示切り替えまで）
-            
-            
-            countdownPanel.SetActive(true);
         }
         
-        /// <summary>
-        /// UI配置を含めたメンバーたちの初期化
-        /// </summary>
-        private void UpdateMemberList(List<InGamePlayer> players)
-        {
-            var removed = new List<InGamePlayer>();
-            foreach (var existing in _memberStates.Keys)
-            {
-                if (!players.Contains(existing)) removed.Add(existing);
-            }
-            foreach (var r in removed)
-            {
-                Destroy(_memberStates[r].gameObject);
-                _memberStates.Remove(r);
-            }
-
-            foreach (var player in players)
-            {
-                if (_memberStates.TryGetValue(player, out var item))
-                {
-                    item.SetData(player.PlayerName.ToString());
-                }
-                else
-                {
-                    var newItem = Instantiate(memberStatePrefab, memberListContainer);
-                    newItem.SetData(player.PlayerName.ToString());
-                    _memberStates.Add(player, newItem);
-                }
-            }
-        }
-
         private void Update()
         {
-            // RoundControllerはまだSpawnされていない可能性があるのでチェック
+            // このクラスの存在が前提
             if (RoundController.Instance == null) return;
-
-            var runner = JankenNetworkManager.Instance.Runner;
-
-            if (_currentPhase == RoundPhase.WaitingForReady)
+            
+            switch (InGameNetworkManager.Instance.CurrentPhase)
             {
-                var remaining = RoundController.Instance.ReadyCountdown.RemainingTime(runner);
-                countdownText.text = remaining.HasValue ? Mathf.CeilToInt(remaining.Value).ToString() : "0";
-            }
-            else if (_currentPhase == RoundPhase.Thinking)
-            {
-                var remaining = RoundController.Instance.RoundTimer.RemainingTime(runner);
-                roundTimerText.text = remaining.HasValue ? Mathf.CeilToInt(remaining.Value).ToString() : "0";
+                case RoundPhase.Countdown:
+                    // TODO
+                    var remaining = RoundController.Instance.PhaseTimer.RemainingTime(JankenNetworkManager.Instance.Runner);
+                    countText.text = remaining.HasValue ? Mathf.CeilToInt(remaining.Value).ToString() : "0"; // int変換 or 見つからなくて0
+                    break;
+                
+                case RoundPhase.Thinking:
+                    // Roundクラスの内部値を逐一UIゲージに反映していく（0→1、1で時間切れ）
+                    timerGauge.fillAmount = RoundController.Instance.GetPhaseProgress(RoundController.Instance.ThinkingSeconds);
+                    break;
             }
         }
 
         /// <summary>
-        /// Phaseを変えて分岐処理
+        /// Phaseに応じた分岐処理、購読しているのでInGameNetworkManagerから都度呼ばれる
         /// </summary>
         private void OnPhaseChanged(RoundPhase phase)
         {
-            _currentPhase = phase;
+            switch (phase)
+            {
+                // ThinkingPanelがまだ非表示の間にテキストをセットしておく
+                case RoundPhase.Countdown:
+                    turnText.text = $"{RoundController.Instance.RoundNumber}ターン";
+                    memberNumText.text = $"残り {InGameNetworkManager.Instance.RoundSnapshot.Count} / {InGameNetworkManager.Instance.InitialMemberCount} 人";
+                    timerGauge.fillAmount = 0f;
+                    // TODO 生存者のHandIconを元に戻す
+                    ShowCountDownPanel();
+                    break;
 
-            if (phase == RoundPhase.Thinking)
-            {
-                countdownPanel.SetActive(false);
-                rockButton.SetActive(true);
-                scissorsButton.SetActive(true);
-                paperButton.SetActive(true);
+                case RoundPhase.Thinking:
+                    ShowThinkingPanel();
+                    break;
             }
-            else if (phase == RoundPhase.Judging)
-            {
-                
-            }
-            else if (phase == RoundPhase.Result)
-            {
-                
-            }
+        }
+
+        private void HiddenAllPanel()
+        {
+            thinkingPanel.SetActive(false);
+            countDownPanel.SetActive(false);
+        }
+        
+        private void ShowThinkingPanel()
+        {
+            HiddenAllPanel();
+            thinkingPanel.SetActive(true);
+        }
+        
+        private void ShowCountDownPanel()
+        {
+            HiddenAllPanel();
+            countDownPanel.SetActive(true);
         }
     }
 }

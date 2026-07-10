@@ -13,13 +13,15 @@ namespace Script.UI
         [Header("テキスト表示")]
         [SerializeField] private TextMeshProUGUI nameText;
 
-        [Header("出した手のアイコン（選んだ手だけ表示予定）")]
+        [Header("プレイヤーの状態アイコン")]
+        [SerializeField] private Image defaultIcon; // 通常、考えてる時など
+        [SerializeField] private Image retireIcon; // 負けたら常にコレ
         [SerializeField] private Image rockIcon;
-        [SerializeField] private Image scissorsIcon;
         [SerializeField] private Image paperIcon;
-
-        [Header("敗北者アイコン")]
-        [SerializeField] private Image retireIcon;
+        
+        // 現在の状態を外から確認するためのプロパティ
+        public IconType CurrentIcon { get; private set; }
+        public bool IsRetired => CurrentIcon == IconType.Retire;
 
         /// <summary>
         /// 初期化時のユーザー情報の適応
@@ -30,15 +32,17 @@ namespace Script.UI
         }
         
         /// <summary>
-        /// ジャッジの結果表示に使う
-        /// Noneを引数にすれば表示を控えることもできる
+        /// ジャッジの結果表示の時に使う（ボタン押した瞬間には呼ばれない）
         /// </summary>
-        public void SetHand(HandType hand)
+        public void SetIcon(IconType type)
         {
-            // 選んだ手だけ表示、他は隠す
-            rockIcon.gameObject.SetActive(hand == HandType.Rock);
-            scissorsIcon.gameObject.SetActive(hand == HandType.Scissors);
-            paperIcon.gameObject.SetActive(hand == HandType.Paper);
+            CurrentIcon = type;
+            
+            // 選んだタイプだけ表示し、他は隠れる
+            defaultIcon.gameObject.SetActive(type == IconType.Default);
+            retireIcon.gameObject.SetActive(type == IconType.Retire);
+            rockIcon.gameObject.SetActive(type == IconType.Rock);
+            paperIcon.gameObject.SetActive(type == IconType.Paper);
         }
     }
 }

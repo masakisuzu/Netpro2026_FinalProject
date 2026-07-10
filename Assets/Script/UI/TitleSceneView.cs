@@ -38,7 +38,7 @@ namespace Script.UI
         [SerializeField] private TMP_InputField roomIdInput;
         [SerializeField] private TMP_InputField nameInput;
         
-        // どのNetworkPlayerがどのUI行に対応しているかを覚えておく
+        // どの TitlePlayer がどの UI に対応しているか覚えておく
         private readonly Dictionary<TitlePlayer, TitleMemberStateView> _memberStates = new();
         
         /// <summary>
