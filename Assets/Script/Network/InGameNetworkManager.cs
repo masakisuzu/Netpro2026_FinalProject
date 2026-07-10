@@ -39,7 +39,7 @@ namespace Script.Network
 
         public void RegisterPlayer(InGamePlayer player)
         {
-            var list = new List<InGamePlayer>(_players.CurrentValue);
+            var list = new List<InGamePlayer>(_players.CurrentValue); // TitleManagerのやつと同じ仕組みの追加方法
             list.Add(player);
             _players.Value = list;
         }
@@ -51,6 +51,9 @@ namespace Script.Network
             _players.Value = list;
         }
 
+        /// <summary>
+        /// Phaseを切り替えるのはここから！これを購読したViewクラスが動いていく
+        /// </summary>
         public void NotifyPhaseChanged(RoundPhase phase)
         {
             _onPhaseChanged.OnNext(phase);

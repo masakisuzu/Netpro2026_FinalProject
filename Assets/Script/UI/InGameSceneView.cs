@@ -31,8 +31,6 @@ namespace Script.UI
 
         private void Start()
         {
-            countdownPanel.SetActive(true);
-
             InGameNetworkManager.Instance.Players
                 .Subscribe(UpdateMemberList)
                 .AddTo(this);
@@ -42,6 +40,9 @@ namespace Script.UI
                 .AddTo(this);
 
             // ぐーちょきぱーボタンの入力受付はまた別途実装（今回はUI表示切り替えまで）
+            
+            
+            countdownPanel.SetActive(true);
         }
         
         /// <summary>

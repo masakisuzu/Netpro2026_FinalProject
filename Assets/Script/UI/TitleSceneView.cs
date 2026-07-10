@@ -142,6 +142,9 @@ namespace Script.UI
                 return;
             }
             
+            // 前回のエラー文あるかもだからリセットしとく
+            errorText.text = "";
+            
             // マッチング中と表示
             ShowMatchingPanel(roomId, playerName);
             
@@ -205,8 +208,8 @@ namespace Script.UI
             }
             else
             {
-                // エラーテキストを表示
-                errorText.text = result.Message;
+                ShowJoinPanel(); // チェックイン画面に戻る
+                errorText.text = result.Message; // エラーテキストを表示
                 Debug.LogWarning($"マッチング失敗: {result.Message}");
             }
         }
