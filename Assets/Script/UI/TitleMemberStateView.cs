@@ -5,9 +5,9 @@ using UnityEngine.UI;
 namespace Script.UI
 {
     /// <summary>
-    /// メンバー一覧の1行分（ReadyIcon + NAME）を管理・表示する
+    /// 1メンバーが持つプロフィール（ReadyIcon + NAME）を管理・表示する
     /// </summary>
-    public class MemberListItemView : MonoBehaviour
+    public class TitleMemberStateView : MonoBehaviour
     {
         [SerializeField] private TextMeshProUGUI nameText;
         [SerializeField] private Image readyIcon; // 準備完了時に表示するアイコン画像

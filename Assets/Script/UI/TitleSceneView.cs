@@ -10,15 +10,17 @@ namespace Script.UI
 {
     public class TitleSceneView : MonoBehaviour
     {
+        [Header("メンバー一覧")]
+        [SerializeField] private Transform memberListContainer; // Vertical Layout Groupを付けた親。memberListItemPrefab一覧を持つ
+        [SerializeField] private TitleMemberStateView memberStatePrefab;
+        [SerializeField] private TextMeshProUGUI memberNumText;
+        [SerializeField] private TextMeshProUGUI roomIdText;
+        
         [Header("ボタンクラス")]
         [SerializeField] private ButtonBase startButton; // タイトルにある参加ボタン
         [SerializeField] private ButtonBase backTitleButton; // タイトルに戻るボタン
         [SerializeField] private ButtonBase enterRoomButton; // マッチング開始ボタン
         [SerializeField] private ButtonBase readyButton; // マッチング後の開始準備ボタン
-        
-        [Header("入力クラス")]
-        [SerializeField] private TMP_InputField roomIdInput;
-        [SerializeField] private TMP_InputField nameInput;
         
         [Header("UI表示クラス")]
         [SerializeField] private GameObject titlePanel; // 起動後初めに見える背景
@@ -32,14 +34,12 @@ namespace Script.UI
         [SerializeField] private TextMeshProUGUI matchingIDText;
         [SerializeField] private TextMeshProUGUI matchingNameText;
         
-        [Header("メンバー一覧")]
-        [SerializeField] private Transform memberListContainer; // Vertical Layout Groupを付けた親。memberListItemPrefab一覧を持つ
-        [SerializeField] private MemberListItemView memberListItemPrefab;
-        [SerializeField] private TextMeshProUGUI memberNumText;
-        [SerializeField] private TextMeshProUGUI roomIdText;
+        [Header("入力クラス")]
+        [SerializeField] private TMP_InputField roomIdInput;
+        [SerializeField] private TMP_InputField nameInput;
         
-        // どのNetworkPlayerがどのUI行に対応しているかを覚えておく
-        private readonly Dictionary<NetworkPlayer, MemberListItemView> _memberItems = new();
+        // どの TitlePlayer がどの UI に対応しているか覚えておく
+        private readonly Dictionary<TitlePlayer, TitleMemberStateView> _memberStates = new();
         
         /// <summary>
         /// ゲーム起動後はここから始まる
@@ -61,7 +61,7 @@ namespace Script.UI
                 .AddTo(this);
             
             readyButton.OnClickAsObservable
-                .Subscribe(_ => JankenNetworkManager.Instance.SetLocalPlayerReady())
+                .Subscribe(_ => TitleMatchingManager.Instance.SetLocalPlayerReady())
                 .AddTo(this);
             
             // ネットワーク側からの結果通知を購読
@@ -142,6 +142,9 @@ namespace Script.UI
                 return;
             }
             
+            // 前回のエラー文あるかもだからリセットしとく
+            errorText.text = "";
+            
             // マッチング中と表示
             ShowMatchingPanel(roomId, playerName);
             
@@ -153,7 +156,7 @@ namespace Script.UI
         /// JankenNetworkManager の Register / UnRegister / Refresh によるR3発火で処理を呼ぶ
         /// 差分だけを更新して大人数に対応
         /// </summary>
-        private void UpdateMatchedList(List<NetworkPlayer> players)
+        private void UpdateMatchedList(List<TitlePlayer> players)
         {
             // 人数表示
             memberNumText.text = $"{players.Count} / {JankenNetworkManager.MaxCCULimit}";
@@ -162,8 +165,8 @@ namespace Script.UI
             roomIdText.text = $"ID: {JankenNetworkManager.Instance.RoomId}";
             
             // 退出した人のUI行だけを消す（今回のplayersに含まれていないキーを探す）
-            var removedPlayers = new List<NetworkPlayer>();
-            foreach (var existingPlayer in _memberItems.Keys)
+            var removedPlayers = new List<TitlePlayer>();
+            foreach (var existingPlayer in _memberStates.Keys)
             {
                 if (!players.Contains(existingPlayer))
                 {
@@ -172,14 +175,14 @@ namespace Script.UI
             }
             foreach (var removedPlayer in removedPlayers)
             {
-                Destroy(_memberItems[removedPlayer].gameObject);
-                _memberItems.Remove(removedPlayer);
+                Destroy(_memberStates[removedPlayer].gameObject);
+                _memberStates.Remove(removedPlayer);
             }
 
             // 全員分ループし、新規は作成、既存は表示内容だけ更新
             foreach (var player in players)
             {
-                if (_memberItems.TryGetValue(player, out var item))
+                if (_memberStates.TryGetValue(player, out var item))
                 {
                     // 既に行がある→中身だけ更新（Instantiateしない）
                     item.SetData(player.PlayerName.ToString(), player.IsReady);
@@ -187,9 +190,9 @@ namespace Script.UI
                 else
                 {
                     // 新規参加者→行を1つだけ新しく作る
-                    var newItem = Instantiate(memberListItemPrefab, memberListContainer);
+                    var newItem = Instantiate(memberStatePrefab, memberListContainer);
                     newItem.SetData(player.PlayerName.ToString(), player.IsReady);
-                    _memberItems.Add(player, newItem);
+                    _memberStates.Add(player, newItem);
                 }
             }
         }
@@ -205,8 +208,8 @@ namespace Script.UI
             }
             else
             {
-                // エラーテキストを表示
-                errorText.text = result.Message;
+                ShowJoinPanel(); // チェックイン画面に戻る
+                errorText.text = result.Message; // エラーテキストを表示
                 Debug.LogWarning($"マッチング失敗: {result.Message}");
             }
         }
