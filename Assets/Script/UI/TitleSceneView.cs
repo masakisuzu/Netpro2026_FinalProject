@@ -69,7 +69,7 @@ namespace Script.UI
                 .Subscribe(OnMatchingResult)
                 .AddTo(this);
             
-            JankenNetworkManager.Instance.Players
+            TitleMatchingManager.Instance.Players
                 .Subscribe(UpdateMatchedList)
                 .AddTo(this);
         }

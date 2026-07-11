@@ -1,6 +1,5 @@
 using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 using Script.Network;
 
 namespace Script.UI
@@ -14,10 +13,10 @@ namespace Script.UI
         [SerializeField] private TextMeshProUGUI nameText;
 
         [Header("プレイヤーの状態アイコン")]
-        [SerializeField] private Image defaultIcon; // 通常、考えてる時など
-        [SerializeField] private Image retireIcon; // 負けたら常にコレ
-        [SerializeField] private Image rockIcon;
-        [SerializeField] private Image paperIcon;
+        [SerializeField] private GameObject defaultIcon; // 通常、考えてる時など
+        [SerializeField] private GameObject retireIcon; // 負けたら常にコレ
+        [SerializeField] private GameObject rockIcon;
+        [SerializeField] private GameObject paperIcon;
         
         // 現在の状態を外から確認するためのプロパティ
         public IconType CurrentIcon { get; private set; }
@@ -39,10 +38,10 @@ namespace Script.UI
             CurrentIcon = type;
             
             // 選んだタイプだけ表示し、他は隠れる
-            defaultIcon.gameObject.SetActive(type == IconType.Default);
-            retireIcon.gameObject.SetActive(type == IconType.Retire);
-            rockIcon.gameObject.SetActive(type == IconType.Rock);
-            paperIcon.gameObject.SetActive(type == IconType.Paper);
+            defaultIcon.SetActive(type == IconType.Default);
+            retireIcon.SetActive(type == IconType.Retire);
+            rockIcon.SetActive(type == IconType.Rock);
+            paperIcon.SetActive(type == IconType.Paper);
         }
     }
 }

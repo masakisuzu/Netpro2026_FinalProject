@@ -999,7 +999,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   nameText: {fileID: 6268121521929984723}
-  defaultIcon: {fileID: 0}
-  retireIcon: {fileID: 0}
-  rockIcon: {fileID: 0}
-  paperIcon: {fileID: 3286655073470505956}
+  defaultIcon: {fileID: 4009526944791517415}
+  retireIcon: {fileID: 1028008969439158287}
+  rockIcon: {fileID: 1329015183625562319}
+  paperIcon: {fileID: 3646920855993267746}

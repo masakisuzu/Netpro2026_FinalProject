@@ -12,8 +12,10 @@ namespace Script.Network
     public class TitleMatchingManager : MonoBehaviour
     {
         public static TitleMatchingManager Instance { get; private set; }
+        
+        // 参加者一覧。値が変わる度、表示も更新させたいので購読対象にする
         private readonly ReactiveProperty<List<TitlePlayer>> _players = new(new List<TitlePlayer>());
-        public ReadOnlyReactiveProperty<List<TitlePlayer>> Players => _players;
+        public ReadOnlyReactiveProperty<List<TitlePlayer>> Players => _players; // 外部参照用
 
         private void Awake()
         {
@@ -76,10 +78,8 @@ namespace Script.Network
             list.Add(player);
     
             // .Valueに代入してR3発火
+            // .Add(player)みたいな書き方だと通知いかないらしい。だから新しいリスト丸ごとを用意する必要があった
             _players.Value = list;
-            
-            // この書き方だと通知いかないらしい。だから新しいリスト丸ごとを用意する必要があった
-            // _players.CurrentValue.Add(player);
         }
 
         /// <summary>
