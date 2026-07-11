@@ -19,14 +19,10 @@ namespace Script.Network
 
         [SerializeField] private NetworkRunner networkRunnerPrefab; // Fusion自体のエンジン、ゲームロジックとは違うネットワーク接続そのもの
         [SerializeField] private NetworkPrefabRef titlePlayerPrefab; // 電話で話している内容そのもの。ネットワーク経由で名前等、伝えたい情報を送り合える
+        
         public NetworkRunner Runner { get; private set; } // networkRunnerPrefabを生成（ネットワーク処理を開始）したらここで管理
-
         public string PlayerName { get; private set; } = ""; // 詳細(PlayerInfo)を外部から参照するためにも必要
         public string RoomId { get; private set; } = "";
-        
-        // 参加者一覧。値が変わる度、表示も更新させたいので購読対象にする
-        private readonly ReactiveProperty<List<TitlePlayer>> _players = new(new List<TitlePlayer>());
-        public ReadOnlyReactiveProperty<List<TitlePlayer>> Players => _players; // 外部参照用
 
         public const int MaxCCULimit = 100; // Fusion FREEプラン上限（1つのプロジェクトだけ）
         private int _totalEstimatedConnections; // 現在の参加人数
