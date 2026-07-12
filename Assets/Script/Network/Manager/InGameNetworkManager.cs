@@ -1,10 +1,13 @@
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using Fusion;
 using R3;
+using Script.Network.Player;
+using Script.Network.Utility;
 using Script.UI;
 using UnityEngine;
 
-namespace Script.Network
+namespace Script.Network.Manager
 {
     public class InGameNetworkManager : MonoBehaviour
     {
@@ -22,13 +25,8 @@ namespace Script.Network
         private readonly ReactiveProperty<List<InGamePlayer>> _players = new(new List<InGamePlayer>());
         public ReadOnlyReactiveProperty<List<InGamePlayer>> Players => _players;
         
-        // ゲーム開始時点の部屋の参加者総数（一度だけ確定する定数。以後変わらない）
-        public int InitialMemberCount { get; private set; }
-        // 初ターン判定に、RoundクラスのTurnNumを参照してもいいが、更新タイミングのずれとかあり分かりやすく今回はBoolを使う
-        private bool _isFirstRound = true;
-
         // インゲーム内のフェーズ管理（初期はカウントダウン）
-        private readonly Subject<RoundPhase> _onPhaseChanged = new();
+        private readonly Subject<RoundPhase> _onPhaseChanged = new(); 
         public Observable<RoundPhase> OnPhaseChanged => _onPhaseChanged;
         
         // 「このラウンドの対象者」として確定させたスナップショット
@@ -40,20 +38,52 @@ namespace Script.Network
         public IReadOnlyDictionary<InGamePlayer, InGameMemberStateView> MemberStates => _memberStates;
         private readonly Dictionary<InGamePlayer, InGameMemberStateView> _memberStates = new();
 
-        private void Awake()
+        // 直近のラウンド結果。EvaluateJudgement() で更新される
+        // RoundControllerがこれを見てループを続けるか決める
+        public RoundOutcome Outcome { get; private set; } = RoundOutcome.Continue;
+        public string WinnerName { get; private set; } = "";
+        
+        /// <summary>
+        /// BootStrapクラスから呼ばれる初期化処理
+        /// </summary>
+        public async UniTask InitializePlayer()
         {
             Instance = this;
-        }
-        
-        private async void Start()
-        {
             var runner = JankenNetworkManager.Instance.Runner;
 
             // 各自、自分専用のInGamePlayerを生成する
             // 同期Spawnだとシーン遷移直後にPrefabロードが間に合わないことがあるため、非同期版を使う
             await runner.SpawnAsync(inGamePlayerPrefab, inputAuthority: runner.LocalPlayer);
+            
+            // 「人数分が揃うまで」を条件に待つ
+            int expected = JankenNetworkManager.Instance.ExpectedPlayerCount;
+            Debug.Log(expected);
+            await UniTask.WaitUntil(() => _players.CurrentValue.Count >= expected);
+            
+            // メンバー情報確定（スポーンした参加者をリスト化）
+            foreach (var player in _players.CurrentValue)
+            {
+                if (_memberStates.ContainsKey(player)) continue; // 念のための安全策
 
-            // 代表者だけがラウンド管理オブジェクトを1つ生成する
+                var item = Instantiate(memberStatePrefab, memberListContainer);
+                item.SetData(player.PlayerName.ToString()); // 名前の反映
+                item.SetIcon(IconType.Default); // アイコンの反映
+
+                _memberStates.Add(player, item);
+            }
+
+            // Roundから毎ターン呼ばれるけど、初期化時の初ターンは自分で呼ぶ
+            // （OnChangeRenderやフローの仕組み上自分で呼んだ方がわかりやすい）
+            PrepareForNewRound();
+        }
+
+        /// <summary>
+        /// 代表者だけ、ラウンド管理オブジェクトを1つ生成する 
+        /// </summary>
+        public async UniTask InitializeRoundController()
+        {
+            var runner = JankenNetworkManager.Instance.Runner;
+            
             // これがあることでカウントダウンや、シンキングタイムの制御をしてくれる
             if (runner.IsSharedModeMasterClient)
                 await runner.SpawnAsync(roundControllerPrefab);
@@ -79,7 +109,6 @@ namespace Script.Network
         /// </summary>
         public void NotifyPhaseChanged(RoundPhase phase)
         {
-            // CurrentPhase = phase; // Phaseチェンジ！
             switch (phase)
             {
                 case RoundPhase.Countdown:
@@ -92,16 +121,15 @@ namespace Script.Network
                 
                 case RoundPhase.Judged:
                     RevealHandResults(); // 生き残った人の実際の手（グー・パー）を反映（UIの仕事もあるが一行で済むので…）
+                    EvaluateJudgement(); // ここで勝敗を計算し、Outcomeに結果を残す
                     break;
 
                 case RoundPhase.Result:
-                    
+                    CloseRoomCountdown().Forget();
                     break;
             }
 
-            // これを発火させて今度はUIが更新
-            // ModelクラスがViewクラスを直接参照（依存）してなくていい設計！
-            _onPhaseChanged.OnNext(phase);
+            _onPhaseChanged.OnNext(phase); // これを発火させて今度はUIが更新
         }
         
         /// <summary>
@@ -134,13 +162,6 @@ namespace Script.Network
         /// </summary>
         private void PrepareForNewRound()
         {
-            // 初回ターンのみ処理したい内容
-            if (_isFirstRound)
-            {
-                InitializeMembers();
-                _isFirstRound = false;
-            }
-            
             var activePlayers = new List<InGamePlayer>();
             foreach (var player in _players.CurrentValue)
             {
@@ -162,27 +183,6 @@ namespace Script.Network
             foreach (var player in _roundSnapshot)
             {
                 player.ResetHand();
-            }
-        }
-        
-        /// <summary>
-        /// ゲーム開始時（初回のCountdownの時）に一度だけ呼ぶ。
-        /// 参加者総数を固定し、全員分のView（表示行）をここでまとめて生成する。
-        /// </summary>
-        private void InitializeMembers()
-        {
-            // 参加者総数を把握する（母数、定数として扱っていく）
-            InitialMemberCount = _players.CurrentValue.Count;
-            
-            foreach (var player in _players.CurrentValue)
-            {
-                if (_memberStates.ContainsKey(player)) continue; // 念のための安全策
-
-                var item = Instantiate(memberStatePrefab, memberListContainer);
-                item.SetData(player.PlayerName.ToString()); // 名前の反映
-                item.SetIcon(IconType.Default); // アイコンの反映
-
-                _memberStates.Add(player, item);
             }
         }
 
@@ -229,6 +229,67 @@ namespace Script.Network
         }
         
         /// <summary>
+        /// Judged開始時（手が公開された直後）に呼ぶ。
+        /// パーの人数を数えて独り勝ち/共倒れを判定し、その後の生存者数から
+        /// ラウンドの決着（続行/勝者確定/全滅）をOutcomeに確定させる。
+        /// </summary>
+        private void EvaluateJudgement()
+        {
+            var currentPlayers = _players.CurrentValue;
+
+            // 現在の生存者（切断・既リタイアを除く）の中からパー選択者を集める
+            var paperPlayers = new List<InGamePlayer>();
+            foreach (var player in _roundSnapshot)
+            {
+                if (!currentPlayers.Contains(player)) continue; // リストにいるか事前チェック
+                if (!_memberStates.TryGetValue(player, out var view) || view.IsRetired) continue; // キー特定&敗北者チェック
+
+                if (player.HandIcon == IconType.Paper) // パーをカウント
+                    paperPlayers.Add(player);
+            }
+
+            // パーが2人以上いたら、その全員が共倒れでリタイア。内部値だけ変更で見た目はまだ
+            if (paperPlayers.Count > 1)
+            {
+                foreach (var p in paperPlayers) 
+                    p.SetHand(IconType.Retire);
+            }
+
+            // ここまでの結果を踏まえて、生存者を数え直す
+            int aliveCount = 0;
+            InGamePlayer lastAlive = null;
+            foreach (var player in _roundSnapshot)
+            {
+                if (!currentPlayers.Contains(player)) continue;
+                if (_memberStates.TryGetValue(player, out var view) && !view.IsRetired) // 敗北者じゃない！
+                {
+                    aliveCount++; // カウント増やしていく
+                    lastAlive = player; // カウントの度に更新されるけど、もし一人だけだったらまさにlastAliveという名にふさわしい
+                }
+            }
+
+            // 決着判定（優先度：パー独り勝ち > 最後の1人 > 全滅 > 継続）
+            if (paperPlayers.Count == 1)
+            {
+                Outcome = RoundOutcome.PaperWin;
+                WinnerName = paperPlayers[0].PlayerName.ToString();
+            }
+            else if (aliveCount == 1)
+            {
+                Outcome = RoundOutcome.LastSurvivor;
+                WinnerName = lastAlive.PlayerName.ToString();
+            }
+            else if (aliveCount == 0)
+            {
+                Outcome = RoundOutcome.AllEliminated;
+            }
+            else
+            {
+                Outcome = RoundOutcome.Continue;
+            }
+        }
+        
+        /// <summary>
         /// Thinking中、ボタンから呼ばれる。自分自身のInGamePlayerに手を書き込む
         /// </summary>
         public void SetLocalPlayerHand(IconType type)
@@ -252,6 +313,19 @@ namespace Script.Network
             }
 
             return false; // 自分のInGamePlayerが見つからない場合は、念のためfalse扱い
+        }
+        
+        /// <summary>
+        /// 任意で終わらず、Result表示中の残り時間によってタイトルに戻らせる
+        /// でもゲームはもう終了したので、誤差を気にせず各自処理させる
+        /// </summary>
+        private async UniTaskVoid CloseRoomCountdown()
+        {
+            // RoundControllerが既に破棄されている可能性も考慮しつつ待つ
+            await UniTask.WaitUntil(() => RoundController.Instance == null || RoundController.Instance.PhaseTimer.Expired(JankenNetworkManager.Instance.Runner));
+
+            // 一定時間経過後、強制終了
+            await JankenNetworkManager.Instance.CloseRoomAsync();
         }
     }
 }

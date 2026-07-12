@@ -1,6 +1,6 @@
+using Script.Network.Utility;
 using TMPro;
 using UnityEngine;
-using Script.Network;
 
 namespace Script.UI
 {

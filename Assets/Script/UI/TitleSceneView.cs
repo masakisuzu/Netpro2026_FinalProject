@@ -3,7 +3,9 @@ using Cysharp.Threading.Tasks;
 using UnityEngine;
 using R3;
 using Script.Button;
-using Script.Network;
+using Script.Network.Manager;
+using Script.Network.Player;
+using Script.Network.Utility;
 using TMPro;
 
 namespace Script.UI
@@ -42,9 +44,9 @@ namespace Script.UI
         private readonly Dictionary<TitlePlayer, TitleMemberStateView> _memberStates = new();
         
         /// <summary>
-        /// ゲーム起動後はここから始まる
+        /// BootStrapクラスから呼ばれる
         /// </summary>
-        void Start()
+        public void Initialize()
         {
             ShowTitlePanel();
             
@@ -132,13 +134,13 @@ namespace Script.UI
             
             if (string.IsNullOrEmpty(roomId))
             {
-                Debug.LogWarning("IDが未入力です");
+                errorText.text = "ID が未入力らしいよ";
                 return;
             }
             
             if (string.IsNullOrEmpty(playerName))
             {
-                Debug.LogWarning("NAMEが未入力です");
+                errorText.text = "NAME が未入力らしいよ";
                 return;
             }
             

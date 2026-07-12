@@ -1,4 +1,4 @@
-namespace Script.Network
+namespace Script.Network.Utility
 {
     /// <summary>
     /// マッチング結果だけどどちらにするか定めるもの

@@ -1,8 +1,9 @@
 using Cysharp.Threading.Tasks;
 using Fusion;
+using Script.Network.Utility;
 using UnityEngine;
 
-namespace Script.Network
+namespace Script.Network.Manager
 {
     /// <summary>
     /// 「カウントダウン」と「残り時間タイマー」を全員で同期するためのオブジェクト
@@ -35,13 +36,27 @@ namespace Script.Network
         // 結果を見せている秒数（次のラウンドへ移るまでの間）
         private const float judgedSeconds = 5f;
         public float JudgedSeconds => judgedSeconds;
+        
+        // リザルトを見せている秒数（部屋を強制退出させるまでの猶予）
+        private const float resultSeconds = 20f;
+        public float ResultSeconds => resultSeconds;
 
         public override void Spawned()
         {
             Instance = this;
 
+            // CurrentPhaseの初期値(RoundPhase.Countdown)もこのメソッド内で定まる
             if (Object.HasStateAuthority)
                 RunGameLoop().Forget();
+        }
+        
+        /// <summary>
+        /// 破棄後もInstanceが古い参照を持ち続けてしまい、エラーが出るので定義
+        /// </summary>
+        public override void Despawned(NetworkRunner runner, bool hasState)
+        {
+            if (Instance == this) 
+                Instance = null;
         }
         
         /// <summary>
@@ -55,7 +70,7 @@ namespace Script.Network
                 TurnNum++;
 
                 // カウントダウン！3,2,1,,,
-                CurrentPhase = RoundPhase.Countdown; // Phaseチェンジの命令
+                CurrentPhase = RoundPhase.Countdown; // Phase更新！
                 PhaseTimer = TickTimer.CreateFromSeconds(Runner, countdownSeconds); // countdownSeconds秒後に期限切れになるタイマーを作成
                 await UniTask.WaitUntil(() => PhaseTimer.Expired(Runner)); // 期限切れになるまでawait
                 
@@ -73,6 +88,16 @@ namespace Script.Network
                 CurrentPhase = RoundPhase.Judged;
                 PhaseTimer = TickTimer.CreateFromSeconds(Runner, judgedSeconds);
                 await UniTask.WaitUntil(() => PhaseTimer.Expired(Runner));
+                
+                // Judged の間に RoundOutcome が更新されるので
+                // 決着していればループを抜けてResultへ。継続なら再度whileループ。
+                if (InGameNetworkManager.Instance.Outcome != RoundOutcome.Continue)
+                {
+                    CurrentPhase = RoundPhase.Result;
+                    PhaseTimer = TickTimer.CreateFromSeconds(Runner, resultSeconds); // リザルトの表示時間
+                    await UniTask.WaitUntil(() => PhaseTimer.Expired(Runner));
+                    break;
+                }
             }
         }
         
