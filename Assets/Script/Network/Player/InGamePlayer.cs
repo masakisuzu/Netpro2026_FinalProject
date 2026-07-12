@@ -1,6 +1,8 @@
 using Fusion;
+using Script.Network.Manager;
+using Script.Network.Utility;
 
-namespace Script.Network
+namespace Script.Network.Player
 {
     /// <summary>
     /// ネットワーク越しに同期される個別の実データ

@@ -1,6 +1,7 @@
 using Fusion;
+using Script.Network.Manager;
 
-namespace Script.Network
+namespace Script.Network.Player
 {
     /// <summary>
     /// マッチング成功時にSpawn()される

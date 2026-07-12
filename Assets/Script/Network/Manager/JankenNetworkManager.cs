@@ -1,13 +1,14 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using Cysharp.Threading.Tasks;
 using Fusion;
 using Fusion.Sockets;
 using R3;
+using Script.Network.Utility;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
-namespace Script.Network
+namespace Script.Network.Manager
 {
     /// <summary>
     /// シーンを跨ぐネットワーク管理クラス
@@ -20,6 +21,7 @@ namespace Script.Network
         [SerializeField] private NetworkRunner networkRunnerPrefab; // Fusion自体のエンジン、ゲームロジックとは違うネットワーク接続そのもの
         [SerializeField] private NetworkPrefabRef titlePlayerPrefab; // 電話で話している内容そのもの。ネットワーク経由で名前等、伝えたい情報を送り合える
         
+        // =============== TitleSceneで使う ===============
         public NetworkRunner Runner { get; private set; } // networkRunnerPrefabを生成（ネットワーク処理を開始）したらここで管理
         public string PlayerName { get; private set; } = ""; // 詳細(PlayerInfo)を外部から参照するためにも必要
         public string RoomId { get; private set; } = "";
@@ -33,8 +35,16 @@ namespace Script.Network
         // マッチング処理の結果をViewクラスに伝えるための発火装置（Viewクラスが購読して待機している）
         private readonly Subject<MatchingResult> _onMatchingResult = new();
         public Observable<MatchingResult> OnMatchingResult => _onMatchingResult;
+        
+        
+        // =============== InGameSceneで使う ===============
+        public int ExpectedPlayerCount { get; private set; } // ゲーム開始前の参加者総数。後にRoundが参照しに来て同期させる
+        public void SetExpectedPlayerCount(int count) => ExpectedPlayerCount = count; // [NetWork]ではないので同期されない点に注意
 
-        private void Awake()
+        /// <summary>
+        /// BootStrapクラスから呼ばれる
+        /// </summary>
+        public void Initialize()
         {
             if (Instance == null)
             {
@@ -136,6 +146,21 @@ namespace Script.Network
             }
         }
         
+        /// <summary>
+        /// タイトルに戻りつつ、ネット切断をする
+        /// インゲームを終えた時に呼ぶ
+        /// </summary>
+        public async UniTask CloseRoomAsync()
+        {
+            if (Runner == null) return;
+            await Runner.Shutdown();
+            
+            Destroy(Runner.gameObject);
+            Runner = null;
+
+            SceneManager.LoadScene("Title");
+        }
+        
         // ------------------------ INetworkRunnerCallbacks ------------------------
         
         /// <summary>
@@ -158,21 +183,12 @@ namespace Script.Network
             // sessionListの値を結果として渡し、awaitを解決(終了)させる
             _sessionListTcs?.TrySetResult(sessionList);
         }
-
         void INetworkRunnerCallbacks.OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason)
         {
             _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Error, reason.ToString()));
         }
-
-        void INetworkRunnerCallbacks.OnPlayerJoined(NetworkRunner runner, PlayerRef player)
-        {
-            
-        }
-
-        void INetworkRunnerCallbacks.OnPlayerLeft(NetworkRunner runner, PlayerRef player)
-        {
-            
-        }
+        void INetworkRunnerCallbacks.OnPlayerJoined(NetworkRunner runner, PlayerRef player) { }
+        void INetworkRunnerCallbacks.OnPlayerLeft(NetworkRunner runner, PlayerRef player) { }
         void INetworkRunnerCallbacks.OnConnectedToServer(NetworkRunner runner) { }
         void INetworkRunnerCallbacks.OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason) { }
         void INetworkRunnerCallbacks.OnInput(NetworkRunner runner, NetworkInput input) { }

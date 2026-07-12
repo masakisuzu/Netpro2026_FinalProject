@@ -1,9 +1,10 @@
 using System.Collections.Generic;
 using Fusion;
 using R3;
+using Script.Network.Player;
 using UnityEngine;
 
-namespace Script.Network
+namespace Script.Network.Manager
 {
     /// <summary>
     /// シーンをまたがないTitleシーン限定のマッチング管理
@@ -17,7 +18,10 @@ namespace Script.Network
         private readonly ReactiveProperty<List<TitlePlayer>> _players = new(new List<TitlePlayer>());
         public ReadOnlyReactiveProperty<List<TitlePlayer>> Players => _players; // 外部参照用
 
-        private void Awake()
+        /// <summary>
+        /// BootStrapクラスから呼ばれる
+        /// </summary>
+        public void Initialize()
         {
             Instance = this;
         }
@@ -44,15 +48,21 @@ namespace Script.Network
         {
             var players = _players.CurrentValue;
 
-            // TODO
-            // 2人以下は成り立たないので判定しない
-            if (players.Count <= 0) return;
+            // 3人未満は成り立たないので判定しない
+            if (players.Count < 3)
+            {
+                Debug.Log("人数が足りない！今…" + players.Count);
+                return;
+            }
 
             // 1人でも未Readyがいたら何もしない
             foreach (var player in players)
             {
                 if (!player.IsReady) return;
             }
+            
+            // 開始できる！！さっそく今の参加人数を記録しておく（インゲーム受け渡し用として扱う）
+            JankenNetworkManager.Instance.SetExpectedPlayerCount(players.Count);
 
             // 全員Readyだった場合でも、実行するのは代表者1人だけにする
             // （全クライアントで同時にLoadSceneが呼ばれるのを防ぐため）
