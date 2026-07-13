@@ -49,11 +49,13 @@ namespace Script.Network.Manager
             var players = _players.CurrentValue;
 
             // 3人未満は成り立たないので判定しない
+            /*
             if (players.Count < 3)
             {
                 Debug.Log("人数が足りない！今…" + players.Count);
                 return;
             }
+            */
 
             // 1人でも未Readyがいたら何もしない
             foreach (var player in players)
