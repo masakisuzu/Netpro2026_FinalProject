@@ -161,7 +161,7 @@ namespace Script.UI
         private void UpdateMatchedList(List<TitlePlayer> players)
         {
             // 人数表示
-            memberNumText.text = $"{players.Count} / {JankenNetworkManager.MaxCCULimit}";
+            memberNumText.text = $"参加者: {players.Count} / {JankenNetworkManager.MaxCCULimit}";
             
             // Id表示（毎回呼ぶ必要ないけどまあいいか）
             roomIdText.text = $"ID: {JankenNetworkManager.Instance.RoomId}";
@@ -211,8 +211,7 @@ namespace Script.UI
             else
             {
                 ShowJoinPanel(); // チェックイン画面に戻る
-                errorText.text = result.Message; // エラーテキストを表示
-                Debug.LogWarning($"マッチング失敗: {result.Message}");
+                errorText.text = $"マッチング失敗: {result.Message}"; // エラーテキストを表示
             }
         }
     }
