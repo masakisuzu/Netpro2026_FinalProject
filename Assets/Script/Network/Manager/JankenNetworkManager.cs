@@ -22,12 +22,13 @@ namespace Script.Network.Manager
         [SerializeField] private NetworkPrefabRef titlePlayerPrefab; // 電話で話している内容そのもの。ネットワーク経由で名前等、伝えたい情報を送り合える
         
         // =============== TitleSceneで使う ===============
+        private const string SessionPropertyIsInGame = "IsInGame";
         public NetworkRunner Runner { get; private set; } // networkRunnerPrefabを生成（ネットワーク処理を開始）したらここで管理
         public string PlayerName { get; private set; } = ""; // 詳細(PlayerInfo)を外部から参照するためにも必要
         public string RoomId { get; private set; } = "";
 
         public const int MaxCCULimit = 100; // Fusion FREEプラン上限（1つのプロジェクトだけ）
-        private int _totalEstimatedConnections; // 現在の参加人数
+        public int _totalEstimatedConnections; // 現在の参加人数
 
         // セッション一覧を「一度だけ」受け取るための待機用
         private UniTaskCompletionSource<List<SessionInfo>> _sessionListTcs;
@@ -102,19 +103,26 @@ namespace Script.Network.Manager
                 // 想定上、部屋は常に1つだけ存在する
                 var existing = sessionList[0];
                 
-                // 存在するかつ同じIDだったら参加の下準備
-                if (existing.Name == desiredRoomId)
+                // 名前が違う部屋は拒否
+                if (existing.Name != desiredRoomId)
                 {
-                    finalRoomId = desiredRoomId;
-                }
-                else
-                {
-                    // 不一致→StartGameを呼ばずに即座に失敗とする
-                    _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Error, $"既に別の部屋（{existing.Name}）が開催中です"));
+                    _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Error, $"既に別の部屋（ID: {existing.Name}）が開催中らしい"));
                     Runner.Shutdown();
                     Destroy(Runner.gameObject);
                     return;
                 }
+                
+                // IDは一致しても、既にゲームが始まっているなら入れない
+                bool isInGame = existing.Properties.TryGetValue(SessionPropertyIsInGame, out var prop) && prop == true;
+                if (isInGame)
+                {
+                    _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Error, "その部屋は既に開始しているらしい"));
+                    Runner.Shutdown();
+                    Destroy(Runner.gameObject);
+                    return;
+                }
+                
+                finalRoomId = desiredRoomId;
             }
 
             // これで名前とIDの準備が整った！
@@ -126,7 +134,15 @@ namespace Script.Network.Manager
             {
                 GameMode = GameMode.Shared,
                 SessionName = RoomId,
-                SceneManager = Runner.gameObject.GetComponent<NetworkSceneManagerDefault>() // 皆が同時にシーン遷移できるように
+                
+                // 皆が同時にシーン遷移できるように
+                SceneManager = Runner.gameObject.GetComponent<NetworkSceneManagerDefault>(),
+                
+                // 部屋を新規作成する場合、最初から「まだゲームは始まっていない」状態で公開しておく
+                SessionProperties = new Dictionary<string, SessionProperty>
+                {
+                    { SessionPropertyIsInGame, false }
+                }
             };
 
             // 参加を試みる！
@@ -140,10 +156,23 @@ namespace Script.Network.Manager
             }
             else
             {
-                _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Error, result.ShutdownReason.ToString()));
                 Runner.Shutdown();
                 Destroy(Runner.gameObject);
             }
+        }
+        
+        /// <summary>
+        /// InGameへ遷移する直前に呼ぶ。セッションを「もう募集していない」状態に切り替える
+        /// 参加を試みる新規クライアントは、これ以降このセッションを弾けさせられる
+        /// </summary>
+        public void MarkSessionAsInGame()
+        {
+            if (Runner == null) return;
+
+            Runner.SessionInfo.UpdateCustomProperties(new Dictionary<string, SessionProperty>
+            {
+                { SessionPropertyIsInGame, true }
+            });
         }
         
         /// <summary>
@@ -176,7 +205,7 @@ namespace Script.Network.Manager
 
             if (_totalEstimatedConnections >= MaxCCULimit)
             {
-                _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Error, "現在サーバーが混み合っています"));
+                _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Error, "現在サーバーが混み合っています（満員です…）"));
                 runner.Shutdown();
             }
 
