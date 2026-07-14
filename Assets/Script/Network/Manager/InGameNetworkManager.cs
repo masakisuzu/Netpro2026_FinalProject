@@ -56,9 +56,11 @@ namespace Script.Network.Manager
             await runner.SpawnAsync(inGamePlayerPrefab, inputAuthority: runner.LocalPlayer);
             
             // 「人数分が揃うまで」を条件に待つ
-            int expected = JankenNetworkManager.Instance.ExpectedPlayerCount;
-            Debug.Log(expected);
-            await UniTask.WaitUntil(() => _players.CurrentValue.Count >= expected);
+            Debug.Log(JankenNetworkManager.Instance.ExpectedPlayerCount);
+            Debug.Log(JankenNetworkManager.Instance._totalEstimatedConnections + "_total");
+            // InGameNetworkManager側
+            Debug.Log($"[InGame] InstanceID: {JankenNetworkManager.Instance.GetInstanceID()}, ExpectedPlayerCount: {JankenNetworkManager.Instance.ExpectedPlayerCount}");
+            await UniTask.WaitUntil(() => _players.CurrentValue.Count >= JankenNetworkManager.Instance.ExpectedPlayerCount);
             
             // メンバー情報確定（スポーンした参加者をリスト化）
             foreach (var player in _players.CurrentValue)

@@ -30,6 +30,7 @@ namespace Script.UI
         [SerializeField] private GameObject checkInPanel; // ID,名前を入力する枠
         [SerializeField] private GameObject matchingPanel; // マッチング中…
         [SerializeField] private GameObject matchedPanel; // 参加者一覧を表示する枠
+        [SerializeField] private GameObject readyButtonBoard; // 一度押すと非表示にしたいので用意
         
         [Header("Text表示クラス")]
         [SerializeField] private TextMeshProUGUI errorText;
@@ -63,7 +64,11 @@ namespace Script.UI
                 .AddTo(this);
             
             readyButton.OnClickAsObservable
-                .Subscribe(_ => TitleMatchingManager.Instance.SetLocalPlayerReady())
+                .Subscribe(_ =>
+                {
+                    TitleMatchingManager.Instance.SetLocalPlayerReady();
+                    readyButtonBoard.SetActive(false); // もう押せない（非表示）
+                })
                 .AddTo(this);
             
             // ネットワーク側からの結果通知を購読
@@ -121,6 +126,11 @@ namespace Script.UI
             HiddenAllPanel();
             guidePanel.SetActive(true); // マッチング成功後もガイド表示
             matchedPanel.SetActive(true);
+        }
+        
+        private void HideOKButton()
+        {
+            
         }
         
         /// <summary>

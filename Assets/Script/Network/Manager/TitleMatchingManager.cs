@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using Fusion;
 using R3;
 using Script.Network.Player;
@@ -49,30 +50,54 @@ namespace Script.Network.Manager
             var players = _players.CurrentValue;
 
             // 3人未満は成り立たないので判定しない
-            /*
-            if (players.Count < 3)
+            if (players.Count < 2)
             {
                 Debug.Log("人数が足りない！今…" + players.Count);
                 return;
             }
-            */
 
             // 1人でも未Readyがいたら何もしない
             foreach (var player in players)
             {
                 if (!player.IsReady) return;
             }
-            
-            // 開始できる！！さっそく今の参加人数を記録しておく（インゲーム受け渡し用として扱う）
-            JankenNetworkManager.Instance.SetExpectedPlayerCount(players.Count);
 
-            // 全員Readyだった場合でも、実行するのは代表者1人だけにする
-            // （全クライアントで同時にLoadSceneが呼ばれるのを防ぐため）
+            // 開始確定！なので準備に取り掛かる
+            ProceedToGameStart().Forget();
+        }
+        
+        /// <summary>
+        /// 全クライアントがそれぞれ独立して実行する開始処理。
+        /// 自分のローカルなTitlePlayerリストがまだ全員分揃っていない可能性があるため、
+        /// Fusionが権威的に管理しているSessionInfo.PlayerCountと一致するまで待ってから進める。
+        /// </summary>
+        private async UniTaskVoid ProceedToGameStart()
+        {
             var runner = JankenNetworkManager.Instance.Runner;
-            if (runner.IsSharedModeMasterClient)
+            
+            // 念のためもう一度参加者数をセット！
+            JankenNetworkManager.Instance.SetExpectedPlayerCount(_players.CurrentValue.Count);
+            Debug.Log(JankenNetworkManager.Instance.ExpectedPlayerCount);
+            Debug.Log(JankenNetworkManager.Instance._totalEstimatedConnections + "_estimate");
+            // TitleMatchingManager側
+            Debug.Log($"[Title] InstanceID: {JankenNetworkManager.Instance.GetInstanceID()}, ExpectedPlayerCount: {JankenNetworkManager.Instance.ExpectedPlayerCount}");
+
+            // ローカルで認識している人数が、実際の接続人数（全クライアント共通の値）と一致するまで待つ
+            // 参加者リスト変動で毎回更新しているが待機処理でちゃんと確認しておきたい
+            await UniTask.WaitUntil(() => _players.CurrentValue.Count >= runner.SessionInfo.PlayerCount);
+
+            // 待機中に誰かがReadyを解除する可能性は低いが、念のため再確認する
+            foreach (var player in _players.CurrentValue)
             {
-                runner.LoadScene(SceneRef.FromPath("Assets/Scenes/InGame.unity"));
+                if (!player.IsReady) return;
             }
+            
+            // ゲームが開始中と判定きりかえ！（代表者だけで充分だけど）
+            JankenNetworkManager.Instance.MarkSessionAsInGame();
+
+            // シーン遷移の実行は、代表者だけ（全クライアント別々にLoadSceneはよくない）
+            if (runner.IsSharedModeMasterClient)
+                runner.LoadScene(SceneRef.FromPath("Assets/Scenes/InGame.unity"));
         }
         
         // -------------------- 参加者リストの更新系（R3発火でViewも変わる） --------------------
@@ -92,6 +117,9 @@ namespace Script.Network.Manager
             // .Valueに代入してR3発火
             // .Add(player)みたいな書き方だと通知いかないらしい。だから新しいリスト丸ごとを用意する必要があった
             _players.Value = list;
+            
+            // 参加者リストが変化するたびに、常に最新人数をJankenNetworkManagerへ反映しておく
+            JankenNetworkManager.Instance.SetExpectedPlayerCount(list.Count);
         }
 
         /// <summary>
@@ -104,6 +132,9 @@ namespace Script.Network.Manager
             var list = new List<TitlePlayer>(_players.CurrentValue);
             list.Remove(player);
             _players.Value = list;
+            
+            // 参加者リストが変化するたびに、常に最新人数をJankenNetworkManagerへ反映しておく
+            JankenNetworkManager.Instance.SetExpectedPlayerCount(list.Count);
         }
 
         /// <summary>
@@ -114,6 +145,9 @@ namespace Script.Network.Manager
         {
             // 今のリストをそのまま再代入
             _players.Value = new List<TitlePlayer>(_players.CurrentValue);
+            
+            // 参加者リストが変化するたびに、常に最新人数をJankenNetworkManagerへ反映しておく
+            JankenNetworkManager.Instance.SetExpectedPlayerCount(_players.Value.Count);
         }
     }
 }
