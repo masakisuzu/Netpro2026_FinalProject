@@ -21,14 +21,12 @@ namespace Script.Network.Manager
         [SerializeField] private NetworkRunner networkRunnerPrefab; // Fusion自体のエンジン、ゲームロジックとは違うネットワーク接続そのもの
         [SerializeField] private NetworkPrefabRef titlePlayerPrefab; // 電話で話している内容そのもの。ネットワーク経由で名前等、伝えたい情報を送り合える
         
-        // =============== TitleSceneで使う ===============
-        private const string SessionPropertyIsInGame = "IsInGame";
+        private const string SessionPropertyIsInGame = "IsInGame"; // 開始前か開始中かの判定管理
         public NetworkRunner Runner { get; private set; } // networkRunnerPrefabを生成（ネットワーク処理を開始）したらここで管理
         public string PlayerName { get; private set; } = ""; // 詳細(PlayerInfo)を外部から参照するためにも必要
         public string RoomId { get; private set; } = "";
 
         public const int MaxCCULimit = 100; // Fusion FREEプラン上限（1つのプロジェクトだけ）
-        public int _totalEstimatedConnections; // 現在の参加人数
 
         // セッション一覧を「一度だけ」受け取るための待機用
         private UniTaskCompletionSource<List<SessionInfo>> _sessionListTcs;
@@ -36,11 +34,6 @@ namespace Script.Network.Manager
         // マッチング処理の結果をViewクラスに伝えるための発火装置（Viewクラスが購読して待機している）
         private readonly Subject<MatchingResult> _onMatchingResult = new();
         public Observable<MatchingResult> OnMatchingResult => _onMatchingResult;
-        
-        
-        // =============== InGameSceneで使う ===============
-        public int ExpectedPlayerCount { get; private set; } // ゲーム開始前の参加者総数。後にRoundが参照しに来て同期させる
-        public void SetExpectedPlayerCount(int count) => ExpectedPlayerCount = count; // [NetWork]ではないので同期されない点に注意
 
         /// <summary>
         /// BootStrapクラスから呼ばれる
@@ -91,14 +84,8 @@ namespace Script.Network.Manager
                 return;
             }
             
-            // 部屋を検査し、IDを定める
-            string finalRoomId;
-            if (sessionList == null || sessionList.Count == 0)
-            {
-                // 部屋が存在しない→自分が一人目として部屋を作る下準備
-                finalRoomId = desiredRoomId;
-            }
-            else
+            // 部屋を検査し、入れるかチェック。人がいなかったらスキップ
+            if (sessionList != null && sessionList.Count > 0)
             {
                 // 想定上、部屋は常に1つだけ存在する
                 var existing = sessionList[0];
@@ -112,22 +99,29 @@ namespace Script.Network.Manager
                     return;
                 }
                 
-                // IDは一致しても、既にゲームが始まっているなら入れない
-                bool isInGame = existing.Properties.TryGetValue(SessionPropertyIsInGame, out var prop) && prop == true;
-                if (isInGame)
+                // CCU集計により、満員だったら拒否
+                if (existing.PlayerCount >= MaxCCULimit)
                 {
-                    _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Error, "その部屋は既に開始しているらしい"));
+                    _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Error, "どうやら満員みたいです…"));
                     Runner.Shutdown();
                     Destroy(Runner.gameObject);
                     return;
                 }
                 
-                finalRoomId = desiredRoomId;
+                // IDは一致しても、既にゲームが始まっているなら入れない
+                bool isExisting = existing.Properties.TryGetValue(SessionPropertyIsInGame, out var prop) && prop == true;
+                if (isExisting)
+                {
+                    _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Error, "その部屋は既に開始中らしい"));
+                    Runner.Shutdown();
+                    Destroy(Runner.gameObject);
+                    return;
+                }
             }
-
+            
             // これで名前とIDの準備が整った！
             PlayerName = playerName;
-            RoomId = finalRoomId;
+            RoomId = desiredRoomId;
 
             // 部屋参加の型を作って
             var args = new StartGameArgs
@@ -197,19 +191,8 @@ namespace Script.Network.Manager
         /// </summary>
         void INetworkRunnerCallbacks.OnSessionListUpdated(NetworkRunner runner, List<SessionInfo> sessionList)
         {
-            // CCU集計（ゲーム開始後も毎回更新）
-            _totalEstimatedConnections = 0;
-            
-            foreach (var session in sessionList) 
-                _totalEstimatedConnections += session.PlayerCount;
-
-            if (_totalEstimatedConnections >= MaxCCULimit)
-            {
-                _onMatchingResult.OnNext(new MatchingResult(MatchingResultType.Error, "現在サーバーが混み合っています（満員です…）"));
-                runner.Shutdown();
-            }
-
             // sessionListの値を結果として渡し、awaitを解決(終了)させる
+            // 満員かどうか、その分岐処理などは呼び出し元で判断させる
             _sessionListTcs?.TrySetResult(sessionList);
         }
         void INetworkRunnerCallbacks.OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason)

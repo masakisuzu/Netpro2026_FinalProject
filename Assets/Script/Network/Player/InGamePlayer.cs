@@ -13,9 +13,14 @@ namespace Script.Network.Player
         [Networked]
         public NetworkString<_8> PlayerName { get; set; }
         
+        [Networked]
+        public NetworkBool IsUiReady { get; set; }　// UI初期化が完了したことを他クライアントに知らせるためのフラグ
+        
         [Networked, OnChangedRender(nameof(OnHandIconChanged))]
         public IconType HandIcon { get; set; } // 選択したぐーちーぱーのどれかを持つ（他のIconTypeも持てるけど役割が違う）
-
+        
+        public bool IsRetired => HandIcon == IconType.Retire;
+        
         public override void Spawned()
         {
             if (Object.HasStateAuthority)
@@ -59,6 +64,15 @@ namespace Script.Network.Player
         private void OnHandIconChanged()
         {
             InGameNetworkManager.Instance.NotifyHandChanged();
+        }
+        
+        /// <summary>
+        /// 自分自身のUI初期化が完了したことを通知する
+        /// </summary>
+        public void MarkUiReady()
+        {
+            if (Object.HasStateAuthority)
+                IsUiReady = true;
         }
     }
 }

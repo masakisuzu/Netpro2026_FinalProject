@@ -71,6 +71,9 @@ namespace Script.UI
             // 購読してもBootStrapのフロー的に初期化処理できない
             // （RoundControllerの後に呼ばれる）ので初ターン時だけ自分で呼ぶ
             OnPhaseChanged(RoundPhase.Countdown);
+            
+            // UI初期化が完了したことを他クライアントへ通知する
+            InGameNetworkManager.Instance.MarkLocalPlayerUiReady();
         }
         
         private void Update()
@@ -132,6 +135,13 @@ namespace Script.UI
                     {
                         ShowThinkingPanel();
                     }
+                    break;
+                
+                case RoundPhase.JudgeSync:
+                    // 選択済みと同じ表示にする
+                    HiddenAllPanel();
+                    topBarPanel.SetActive(true);
+                    waitingBoard.SetActive(true);
                     break;
                 
                 case RoundPhase.JudgeCall:
@@ -222,17 +232,13 @@ namespace Script.UI
         
         private void ResetThinkingPanel()
         {
-            Debug.Log($"Turn={RoundController.Instance.TurnNum}");
-            Debug.Log($"Snapshot={InGameNetworkManager.Instance.RoundSnapshot.Count}");
-            Debug.Log($"Expected={JankenNetworkManager.Instance.ExpectedPlayerCount}");
-            
             // ThinkingPanel が非表示の間にリセット・更新しておく
             turnText.text = $"ターン {RoundController.Instance.TurnNum}";
-            memberNumText.text = $"のこり {InGameNetworkManager.Instance.RoundSnapshot.Count} / {JankenNetworkManager.Instance.ExpectedPlayerCount}";
+            memberNumText.text = $"のこり {InGameNetworkManager.Instance.AliveSnapshot.Count} / {JankenNetworkManager.Instance.Runner.SessionInfo.PlayerCount}";
             timerGauge.fillAmount = 0f;
                     
             // 生き残りのみView初期化。アイコンを元に戻す
-            foreach (var player in InGameNetworkManager.Instance.RoundSnapshot)
+            foreach (var player in InGameNetworkManager.Instance.AliveSnapshot)
             { 
                 if (InGameNetworkManager.Instance.MemberStates.TryGetValue(player, out var view))
                     view.SetIcon(IconType.Default);

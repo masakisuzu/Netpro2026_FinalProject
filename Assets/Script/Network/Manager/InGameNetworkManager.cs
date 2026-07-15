@@ -31,8 +31,8 @@ namespace Script.Network.Manager
         
         // 「このラウンドの対象者」として確定させたスナップショット
         // Thinking中はこのリストに対して一切追従しないことで、結果発表時に切断者のUI処理ができる
-        public IReadOnlyList<InGamePlayer> RoundSnapshot => _roundSnapshot;
-        private List<InGamePlayer> _roundSnapshot = new();
+        public IReadOnlyList<InGamePlayer> AliveSnapshot => aliveSnapshot;
+        private List<InGamePlayer> aliveSnapshot = new();
 
         // どの InGamePlayer がどの UI に対応しているか覚えておく
         public IReadOnlyDictionary<InGamePlayer, InGameMemberStateView> MemberStates => _memberStates;
@@ -42,6 +42,9 @@ namespace Script.Network.Manager
         // RoundControllerがこれを見てループを続けるか決める
         public RoundOutcome Outcome { get; private set; } = RoundOutcome.Continue;
         public string WinnerName { get; private set; } = "";
+        
+        // 共倒れ対象として確定したプレイヤー、つまり独り勝ちパーの場合は空
+        private List<InGamePlayer> _pendingEliminations = new();
         
         /// <summary>
         /// BootStrapクラスから呼ばれる初期化処理
@@ -56,11 +59,7 @@ namespace Script.Network.Manager
             await runner.SpawnAsync(inGamePlayerPrefab, inputAuthority: runner.LocalPlayer);
             
             // 「人数分が揃うまで」を条件に待つ
-            Debug.Log(JankenNetworkManager.Instance.ExpectedPlayerCount);
-            Debug.Log(JankenNetworkManager.Instance._totalEstimatedConnections + "_total");
-            // InGameNetworkManager側
-            Debug.Log($"[InGame] InstanceID: {JankenNetworkManager.Instance.GetInstanceID()}, ExpectedPlayerCount: {JankenNetworkManager.Instance.ExpectedPlayerCount}");
-            await UniTask.WaitUntil(() => _players.CurrentValue.Count >= JankenNetworkManager.Instance.ExpectedPlayerCount);
+            await UniTask.WaitUntil(() => _players.CurrentValue.Count >= runner.SessionInfo.PlayerCount);
             
             // メンバー情報確定（スポーンした参加者をリスト化）
             foreach (var player in _players.CurrentValue)
@@ -68,7 +67,7 @@ namespace Script.Network.Manager
                 if (_memberStates.ContainsKey(player)) continue; // 念のための安全策
 
                 var item = Instantiate(memberStatePrefab, memberListContainer);
-                item.SetData(player.PlayerName.ToString()); // 名前の反映
+                item.SetData(player.PlayerName.ToString(), player.Object.HasStateAuthority); // 名前の反映
                 item.SetIcon(IconType.Default); // アイコンの反映
 
                 _memberStates.Add(player, item);
@@ -104,6 +103,37 @@ namespace Script.Network.Manager
             list.Remove(player);
             _players.Value = list;
         }
+        
+        /// <summary>
+        /// Viewの初期化完了時に呼ばれる。自分自身のUI準備完了を通知する
+        /// </summary>
+        public void MarkLocalPlayerUiReady()
+        {
+            foreach (var player in _players.CurrentValue)
+            {
+                if (player.Object.HasStateAuthority)
+                    player.MarkUiReady();
+            }
+        }
+        
+        /// <summary>
+        /// 現在接続中の全プレイヤーのUI初期化が完了しているかを返す。
+        /// RoundController側で、ゲームループを開始してよいかの判定に使う。
+        /// </summary>
+        public bool AllPlayersUiReady()
+        {
+            // 誰もいない状態では判定しない（初期化中の一瞬を誤検知しないため）
+            if (_players.CurrentValue.Count == 0) return false;
+
+            // まだUI初期化ができていない！
+            foreach (var player in _players.CurrentValue)
+            {
+                if (!player.IsUiReady) return false;
+            }
+
+            // Roundクラスへ、ラウンド管理ループ初めてもいいですよ
+            return true;
+        }
 
         /// <summary>
         /// Phaseの更新をする
@@ -114,19 +144,29 @@ namespace Script.Network.Manager
             switch (phase)
             {
                 case RoundPhase.Countdown:
+                    RevealRetirees();
                     PrepareForNewRound();
+                    break;
+                
+                case RoundPhase.JudgeSync:
+                    MarkRetirees(); // 時間切れなので未選択者はリタイアを強制的に選ばせる
                     break;
 
                 case RoundPhase.JudgeCall:
-                    MarkRetirees(); // 結果発表の前に敗北者を表示する（UIの仕事もあるが一行で済むので…）
+                    RevealRetirees(); // 結果発表の前に敗北者を表示する（UIの仕事もあるが一行で済むので…）
                     break;
                 
                 case RoundPhase.Judged:
                     RevealHandResults(); // 生き残った人の実際の手（グー・パー）を反映（UIの仕事もあるが一行で済むので…）
                     EvaluateJudgement(); // ここで勝敗を計算し、Outcomeに結果を残す
                     break;
+                
+                case RoundPhase.Eliminate:
+                    EvaluateEliminations(); // ここで初めてPaper共倒れの書き換えを実行
+                    break;
 
                 case RoundPhase.Result:
+                    RevealRetirees(); // 生き残り勝ちした時のためにパー同士の脱落も分かるようにしておく
                     CloseRoomCountdown().Forget();
                     break;
             }
@@ -144,7 +184,7 @@ namespace Script.Network.Manager
             if (RoundController.Instance.CurrentPhase != RoundPhase.Think) return;
 
             var currentPlayers = _players.CurrentValue;
-            foreach (var player in _roundSnapshot)
+            foreach (var player in aliveSnapshot)
             {
                 // 既に切断してしまった人は「選べない」ので判定から除外する
                 if (!currentPlayers.Contains(player)) continue;
@@ -169,7 +209,7 @@ namespace Script.Network.Manager
             {
                 // 既にリタイア表示になっている人はスキップして除外
                 // （Viewは消さないのでそのままリタイア表示のまま画面には残り続ける）
-                if (_memberStates.TryGetValue(player, out var view) && view.IsRetired)
+                if (player.IsRetired) 
                     continue;
 
                 // 生き残りのみ追加
@@ -177,39 +217,57 @@ namespace Script.Network.Manager
             }
             
             // 生き残りリスト更新
-            _roundSnapshot = activePlayers;
+            aliveSnapshot = activePlayers;
             
             // 生存者だけ、自分自身のHandIconをDefaultへ戻す
             // UI反映用ではなくネットワークの内部値なのでここで
             // （他人の分はHasStateAuthority、つまり本人確認で弾かれる）
-            foreach (var player in _roundSnapshot)
+            foreach (var player in aliveSnapshot)
             {
                 player.ResetHand();
             }
         }
-
+        
         /// <summary>
-        /// 「切断」「リタイア」「時間切れ」になった人のアイコンをRetireに切り替える
-        /// Judging開始の直前（結果発表の直前）に呼び、先に敗北者だけ表示させたい
+        /// 自分自身の InGamePlayer に対して、未選択分の確定を行わせる
+        /// チョキボタンの入力を内部で行うタイプ
+        /// ThinkingPhase が終わった時、Default = 未選択だとリタイア扱いにするために必要
         /// </summary>
         private void MarkRetirees()
         {
-            var currentPlayers = _players.CurrentValue;
-            foreach (var player in _roundSnapshot)
+            foreach (var player in _players.CurrentValue)
+            {
+                if (player.Object.HasStateAuthority && player.HandIcon == IconType.Default) // 未だ未入力
+                    player.SetHand(IconType.Retire);
+            }
+        }
+
+        /// <summary>
+        /// 「リタイア」になった人達のアイコンをRetireに切り替える
+        /// Judging開始の直前（結果発表の直前）に呼び、先に敗北者だけ表示させたい
+        /// 
+        /// 「時間切れ」「切断」の場合、その本人が既に別のメソッドで内部値Retireを選ばせてる
+        /// でないとここでチェックする時はまだ default なので変更しても同期が間に合わないから
+        /// （チョキ選んだ人はその時点で内部値Retireにしてるから大丈夫）
+        /// </summary>
+        private void RevealRetirees()
+        {
+            foreach (var player in aliveSnapshot)
             {
                 // Dictionaryで、playerをキーにして対応するviewを取り出す
                 if (!_memberStates.TryGetValue(player, out var view)) continue;
-
-                // 敗北者の条件
-                bool disconnected = !currentPlayers.Contains(player); // 切断されてる
-                bool chooseRetireHand = !disconnected && player.HandIcon == IconType.Retire; // チョキ選んでる
-                bool timedOut = !disconnected && player.HandIcon == IconType.Default; // 時間切れ
-
-                if (disconnected || chooseRetireHand || timedOut)
+                
+                // aliveSnapshotの時は生きておりリストに情報があるけど
+                // 現時点で切断（＝Despawn）していた場合、HandIconへのアクセス自体が例外になるため
+                // Networked値には触れず、無条件でRetire表示にするだけにする
+                if (!_players.CurrentValue.Contains(player))
                 {
-                    view.SetIcon(IconType.Retire); // リタイアUI表示！！
-                    player.SetHand(IconType.Retire); // 内部値にもリタイア扱いに
+                    view.SetIcon(IconType.Retire);
+                    continue;
                 }
+
+                if (player.HandIcon == IconType.Retire)
+                    view.SetIcon(IconType.Retire); // リタイアUI表示！！
             }
         }
 
@@ -219,11 +277,10 @@ namespace Script.Network.Manager
         /// </summary>
         private void RevealHandResults()
         {
-            var currentPlayers = _players.CurrentValue;
-            foreach (var player in _roundSnapshot)
+            foreach (var player in aliveSnapshot)
             {
                 if (!_memberStates.TryGetValue(player, out var view)) continue; // キーでプレイヤーを特定
-                if (!currentPlayers.Contains(player)) continue; // 生き残りではないならスキップ
+                if (!_players.CurrentValue.Contains(player)) continue; // 生き残りではないならスキップ
 
                 if (player.HandIcon != IconType.Retire)
                     view.SetIcon(player.HandIcon); // Rock / Paper 公開！！
@@ -237,58 +294,69 @@ namespace Script.Network.Manager
         /// </summary>
         private void EvaluateJudgement()
         {
-            var currentPlayers = _players.CurrentValue;
-
-            // 現在の生存者（切断・既リタイアを除く）の中からパー選択者を集める
+            // 現在の生存者を集める（リタイアを除く）
             var paperPlayers = new List<InGamePlayer>();
-            foreach (var player in _roundSnapshot)
+            var rockPlayers = new List<InGamePlayer>();
+            foreach (var player in aliveSnapshot)
             {
-                if (!currentPlayers.Contains(player)) continue; // リストにいるか事前チェック
-                if (!_memberStates.TryGetValue(player, out var view) || view.IsRetired) continue; // キー特定&敗北者チェック
+                if (!_players.CurrentValue.Contains(player)) // リストにいるか事前チェック
+                    continue;
 
                 if (player.HandIcon == IconType.Paper) // パーをカウント
                     paperPlayers.Add(player);
+                else if (player.HandIcon == IconType.Rock) // グーをカウント
+                    rockPlayers.Add(player);
             }
+            
+            // 共倒れ対象を確定させる（独り勝ちの場合は空にする）
+            _pendingEliminations = paperPlayers.Count > 1 ? paperPlayers : new List<InGamePlayer>();
 
-            // パーが2人以上いたら、その全員が共倒れでリタイア。内部値だけ変更で見た目はまだ
-            if (paperPlayers.Count > 1)
-            {
-                foreach (var p in paperPlayers) 
-                    p.SetHand(IconType.Retire);
-            }
-
-            // ここまでの結果を踏まえて、生存者を数え直す
-            int aliveCount = 0;
-            InGamePlayer lastAlive = null;
-            foreach (var player in _roundSnapshot)
-            {
-                if (!currentPlayers.Contains(player)) continue;
-                if (_memberStates.TryGetValue(player, out var view) && !view.IsRetired) // 敗北者じゃない！
-                {
-                    aliveCount++; // カウント増やしていく
-                    lastAlive = player; // カウントの度に更新されるけど、もし一人だけだったらまさにlastAliveという名にふさわしい
-                }
-            }
-
-            // 決着判定（優先度：パー独り勝ち > 最後の1人 > 全滅 > 継続）
-            if (paperPlayers.Count == 1)
+            // 決着判定
+            if (paperPlayers.Count == 1) // パー独り勝ち（パー1,グー1でも先にこっちでif分岐するので大丈夫）
             {
                 Outcome = RoundOutcome.PaperWin;
                 WinnerName = paperPlayers[0].PlayerName.ToString();
             }
-            else if (aliveCount == 1)
+            else if (rockPlayers.Count == 1) // グー生き残り勝ち（グー1 = 残りはみんな敗北予定のチョキ達）
             {
                 Outcome = RoundOutcome.LastSurvivor;
-                WinnerName = lastAlive.PlayerName.ToString();
+                WinnerName = rockPlayers[0].PlayerName.ToString();
             }
-            else if (aliveCount == 0)
+            else if (rockPlayers.Count == 0) // 全滅（グー0 = みんなチョキ）
             {
                 Outcome = RoundOutcome.AllEliminated;
             }
-            else
+            else // 継続（rockPlayerCount >= 2 ともいえる）
             {
                 Outcome = RoundOutcome.Continue;
             }
+        }
+        
+        /// <summary>
+        /// Eliminate開始時に呼ぶ。
+        /// パーが2人以上いた場合の共倒れを、ここで初めて実行する。
+        /// IsRetire化するため、みんなが結果表示をし終えた段階によぶこのメソッドが必要
+        /// </summary>
+        private void EvaluateEliminations()
+        {
+            foreach (var p in _pendingEliminations)
+                p.SetHand(IconType.Retire);
+        }
+        
+        /// <summary>
+        /// Eliminateフェーズの待機条件。
+        /// パー共倒れの対象者全員がRetire化したか確認する（全員 EvaluateEliminations() 呼ばれたか）
+        /// 共倒れ対象がいない（Paperが1人以下）場合は常にtrue
+        /// </summary>
+        public bool AllPaperEliminationsFinalized()
+        {
+            foreach (var player in _pendingEliminations)
+            {
+                if (player.HandIcon != IconType.Retire)
+                    return false;
+            }
+
+            return true;
         }
         
         /// <summary>
@@ -311,10 +379,25 @@ namespace Script.Network.Manager
             foreach (var player in _players.CurrentValue)
             {
                 if (player.Object.HasStateAuthority)
-                    return _memberStates.TryGetValue(player, out var view) && view.IsRetired;
+                    return player.IsRetired;
             }
 
             return false; // 自分のInGamePlayerが見つからない場合は、念のためfalse扱い
+        }
+        
+        /// <summary>
+        /// aliveSnapshot 内の全員（切断者を除く）の HandIconがDefault 以外に確定しているかを返す。
+        /// RoundController の待機条件として使う。みんながdefault以外になってから結果発表したいからね
+        /// </summary>
+        public bool AllHandsFinalized()
+        {
+            foreach (var player in aliveSnapshot)
+            {
+                if (!_players.CurrentValue.Contains(player)) continue; // 切断者は判定から除外
+                if (player.HandIcon == IconType.Default) return false; // defaultが一人でも見つかばまだ通さない
+            }
+
+            return true;
         }
         
         /// <summary>

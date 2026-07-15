@@ -50,7 +50,7 @@ namespace Script.Network.Manager
             var players = _players.CurrentValue;
 
             // 3人未満は成り立たないので判定しない
-            if (players.Count < 2)
+            if (players.Count < 3)
             {
                 Debug.Log("人数が足りない！今…" + players.Count);
                 return;
@@ -75,13 +75,6 @@ namespace Script.Network.Manager
         {
             var runner = JankenNetworkManager.Instance.Runner;
             
-            // 念のためもう一度参加者数をセット！
-            JankenNetworkManager.Instance.SetExpectedPlayerCount(_players.CurrentValue.Count);
-            Debug.Log(JankenNetworkManager.Instance.ExpectedPlayerCount);
-            Debug.Log(JankenNetworkManager.Instance._totalEstimatedConnections + "_estimate");
-            // TitleMatchingManager側
-            Debug.Log($"[Title] InstanceID: {JankenNetworkManager.Instance.GetInstanceID()}, ExpectedPlayerCount: {JankenNetworkManager.Instance.ExpectedPlayerCount}");
-
             // ローカルで認識している人数が、実際の接続人数（全クライアント共通の値）と一致するまで待つ
             // 参加者リスト変動で毎回更新しているが待機処理でちゃんと確認しておきたい
             await UniTask.WaitUntil(() => _players.CurrentValue.Count >= runner.SessionInfo.PlayerCount);
@@ -117,9 +110,6 @@ namespace Script.Network.Manager
             // .Valueに代入してR3発火
             // .Add(player)みたいな書き方だと通知いかないらしい。だから新しいリスト丸ごとを用意する必要があった
             _players.Value = list;
-            
-            // 参加者リストが変化するたびに、常に最新人数をJankenNetworkManagerへ反映しておく
-            JankenNetworkManager.Instance.SetExpectedPlayerCount(list.Count);
         }
 
         /// <summary>
@@ -132,9 +122,6 @@ namespace Script.Network.Manager
             var list = new List<TitlePlayer>(_players.CurrentValue);
             list.Remove(player);
             _players.Value = list;
-            
-            // 参加者リストが変化するたびに、常に最新人数をJankenNetworkManagerへ反映しておく
-            JankenNetworkManager.Instance.SetExpectedPlayerCount(list.Count);
         }
 
         /// <summary>
@@ -145,9 +132,6 @@ namespace Script.Network.Manager
         {
             // 今のリストをそのまま再代入
             _players.Value = new List<TitlePlayer>(_players.CurrentValue);
-            
-            // 参加者リストが変化するたびに、常に最新人数をJankenNetworkManagerへ反映しておく
-            JankenNetworkManager.Instance.SetExpectedPlayerCount(_players.Value.Count);
         }
     }
 }
