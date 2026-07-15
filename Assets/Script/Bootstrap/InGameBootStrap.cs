@@ -24,10 +24,12 @@ namespace Script.Bootstrap
             // ラウンド管理開始（起動し、Phase更新によるカウントダウン）
             await inGameNetworkManager.InitializeRoundController();
             
-            // Spawnしきったのを確認したら…
+            // （代表者が）RoundクラスをSpawnしきったのを（参加者みんな）確認できたら…
             await UniTask.WaitUntil(() => RoundController.Instance != null);
             
             // UI初期化は最後！！（Manager,Roundが準備できてること前提）
+            // ここでUI初期化すると同時に MarkLocalPlayerUiReady() を呼び
+            // 代表者側で全員分揃ったことが確認できたタイミングでRoundクラスの RunGameLoop が開始される
             inGameSceneView.Initialize();
         }
     }

@@ -11,6 +11,10 @@ namespace Script.UI
     {
         [Header("テキスト表示")]
         [SerializeField] private TextMeshProUGUI nameText;
+        
+        [Header("名前の色")]
+        [SerializeField] private Color opColor = Color.black;
+        [SerializeField] private Color myColor = Color.yellow;
 
         [Header("プレイヤーの状態アイコン")]
         [SerializeField] private GameObject defaultIcon; // 通常、考えてる時など
@@ -20,14 +24,14 @@ namespace Script.UI
         
         // 現在の状態を外から確認するためのプロパティ
         public IconType CurrentIcon { get; private set; }
-        public bool IsRetired => CurrentIcon == IconType.Retire;
 
         /// <summary>
-        /// 初期化時のユーザー情報の適応
+        /// 初期化時のユーザー情報の適応。自分の画面に全員分を作るから何度も呼ばれる
         /// </summary>
-        public void SetData(string playerName)
+        public void SetData(string playerName, bool isLocalPlayer)
         {
             nameText.text = playerName;
+            nameText.color = isLocalPlayer ? myColor : opColor;
         }
         
         /// <summary>

@@ -23,7 +23,6 @@ namespace Script.Network.Manager
 
         // カウントダウンのカウント数(s)
         private const float countdownSeconds = 5f;
-        public float CountdownSeconds => countdownSeconds;
         
         // シンキングタイムの制限時間(s)
         private const float thinkingSeconds = 20f;
@@ -33,13 +32,17 @@ namespace Script.Network.Manager
         private const float judgingSeconds = 3f;
         public float JudgingSeconds => judgingSeconds;
 
+        // 全員が選択できたことを同期させる猶予
+        private const float maxSyncWaitSeconds = 7f; // これ以上待っても揃わなければ強制的に進める
+
         // 結果を見せている秒数（次のラウンドへ移るまでの間）
         private const float judgedSeconds = 5f;
-        public float JudgedSeconds => judgedSeconds;
+        
+        // パー共倒れ反映のタイムアウト時間（共倒れパーのRetire化が皆確認出来たらスキップ）
+        private const float maxEliminateWaitSeconds = 5f;
         
         // リザルトを見せている秒数（部屋を強制退出させるまでの猶予）
         private const float resultSeconds = 20f;
-        public float ResultSeconds => resultSeconds;
 
         public override void Spawned()
         {
@@ -47,7 +50,17 @@ namespace Script.Network.Manager
 
             // CurrentPhaseの初期値(RoundPhase.Countdown)もこのメソッド内で定まる
             if (Object.HasStateAuthority)
-                RunGameLoop().Forget();
+                WaitAllReadyThenStart().Forget();
+        }
+        
+        /// <summary>
+        /// 代表者だけが実行。全参加者のUI初期化が完了するまで待ってから、
+        /// 初めてゲームループ本体を開始する。
+        /// </summary>
+        private async UniTaskVoid WaitAllReadyThenStart()
+        {
+            await UniTask.WaitUntil(() => InGameNetworkManager.Instance.AllPlayersUiReady());
+            RunGameLoop().Forget();
         }
         
         /// <summary>
@@ -79,6 +92,11 @@ namespace Script.Network.Manager
                 PhaseTimer = TickTimer.CreateFromSeconds(Runner, thinkingSeconds);
                 await UniTask.WaitUntil(() => PhaseTimer.Expired(Runner));
                 
+                // 全員default以外になる or 保険用がタイムアウトするまで
+                CurrentPhase = RoundPhase.JudgeSync;
+                var syncTimeoutTimer = TickTimer.CreateFromSeconds(Runner, maxSyncWaitSeconds);
+                await UniTask.WaitUntil(() => InGameNetworkManager.Instance.AllHandsFinalized() || syncTimeoutTimer.Expired(Runner));
+                
                 // 結果発表準備！じゃーん、けーん、、、
                 CurrentPhase = RoundPhase.JudgeCall;
                 PhaseTimer = TickTimer.CreateFromSeconds(Runner, judgingSeconds);
@@ -88,6 +106,11 @@ namespace Script.Network.Manager
                 CurrentPhase = RoundPhase.Judged;
                 PhaseTimer = TickTimer.CreateFromSeconds(Runner, judgedSeconds);
                 await UniTask.WaitUntil(() => PhaseTimer.Expired(Runner));
+                
+                // Judgedの間、全員がRock/Paperの表示を見終えた前提で、ここから脱落処理へ進む
+                CurrentPhase = RoundPhase.Eliminate;
+                var eliminateTimeoutTimer = TickTimer.CreateFromSeconds(Runner, maxEliminateWaitSeconds);
+                await UniTask.WaitUntil(() => InGameNetworkManager.Instance.AllPaperEliminationsFinalized() || eliminateTimeoutTimer.Expired(Runner));
                 
                 // Judged の間に RoundOutcome が更新されるので
                 // 決着していればループを抜けてResultへ。継続なら再度whileループ。

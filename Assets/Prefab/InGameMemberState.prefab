@@ -883,8 +883,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4278190080
-  m_fontColor: {r: 0, g: 0, b: 0, a: 1}
+    rgba: 4278255596
+  m_fontColor: {r: 0.9271209, g: 1, b: 0, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -911,7 +911,7 @@ MonoBehaviour:
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
   m_textAlignment: 65535
-  m_characterSpacing: 0
+  m_characterSpacing: 10
   m_wordSpacing: 0
   m_lineSpacing: 0
   m_lineSpacingMax: 0
@@ -999,6 +999,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   nameText: {fileID: 6268121521929984723}
+  opColor: {r: 0, g: 0, b: 0, a: 1}
+  myColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
   defaultIcon: {fileID: 4009526944791517415}
   retireIcon: {fileID: 1028008969439158287}
   rockIcon: {fileID: 1329015183625562319}
