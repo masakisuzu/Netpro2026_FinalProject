@@ -233,7 +233,8 @@ namespace Script.UI
         private void ResetThinkingPanel()
         {
             // ThinkingPanel が非表示の間にリセット・更新しておく
-            turnText.text = $"ターン {RoundController.Instance.TurnNum}";
+            int turn = RoundController.Instance.TurnNum <= 0 ? 1 : RoundController.Instance.TurnNum; // 初期化フロー的に最初は0ターン目に参照することになる…だからその時は無理やり1にする
+            turnText.text = $"ターン {turn}";
             memberNumText.text = $"のこり {InGameNetworkManager.Instance.AliveSnapshot.Count} / {JankenNetworkManager.Instance.Runner.SessionInfo.PlayerCount}";
             timerGauge.fillAmount = 0f;
                     
