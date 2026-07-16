@@ -1,6 +1,6 @@
 using Cysharp.Threading.Tasks;
 using Fusion;
-using Script.Network.Utility;
+using Script.Utility;
 using UnityEngine;
 
 namespace Script.Network.Manager

@@ -1,7 +1,7 @@
 using R3;
 using Script.Button;
 using Script.Network.Manager;
-using Script.Network.Utility;
+using Script.Utility;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;

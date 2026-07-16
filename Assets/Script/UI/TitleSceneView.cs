@@ -5,7 +5,7 @@ using R3;
 using Script.Button;
 using Script.Network.Manager;
 using Script.Network.Player;
-using Script.Network.Utility;
+using Script.Utility;
 using TMPro;
 
 namespace Script.UI

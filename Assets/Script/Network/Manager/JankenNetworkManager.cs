@@ -4,7 +4,7 @@ using Cysharp.Threading.Tasks;
 using Fusion;
 using Fusion.Sockets;
 using R3;
-using Script.Network.Utility;
+using Script.Utility;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 

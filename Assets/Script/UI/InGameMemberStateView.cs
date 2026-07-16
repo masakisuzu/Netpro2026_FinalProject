@@ -1,4 +1,4 @@
-using Script.Network.Utility;
+using Script.Utility;
 using TMPro;
 using UnityEngine;
 
