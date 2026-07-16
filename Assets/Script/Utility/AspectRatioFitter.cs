@@ -15,14 +15,16 @@ namespace Script.Utility
     [RequireComponent(typeof(Camera))]
     public class AspectRatioFitter : MonoBehaviour
     {
-        [Tooltip("固定したい比率。1920x1080なら 16f/9f")]
-        [SerializeField] private float targetAspect = 16f / 9f;
+        // 固定したい比率。1920 x 1080 なら 16f / 9f
+        private const float targetAspect = 16f / 9f;
 
-        [Tooltip("黒帯の色。基本は黒のままでよい")]
-        [SerializeField] private Color letterboxColor = Color.black;
+        // 余白を埋める色。基本は黒色
+        private Color letterboxColor = Color.black;
 
         private Camera cam;
         private Camera backgroundCam;
+        
+        // 前Fの比率を保持することで途中でモニターを変えるなどに対応できる
         private int lastScreenWidth;
         private int lastScreenHeight;
 
@@ -60,9 +62,7 @@ namespace Script.Utility
             // 実機の回転・ウィンドウのリサイズに追従させたい場合は毎フレームチェック
             // (負荷が気になる場合はOnRectTransformDimensionsChange等に置き換えてもよい)
             if (Screen.width != lastScreenWidth || Screen.height != lastScreenHeight)
-            {
                 ApplyAspect();
-            }
         }
 
         private void ApplyAspect()
