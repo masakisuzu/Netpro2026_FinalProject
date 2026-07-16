@@ -1,6 +1,6 @@
 using Fusion;
 using Script.Network.Manager;
-using Script.Network.Utility;
+using Script.Utility;
 
 namespace Script.Network.Player
 {

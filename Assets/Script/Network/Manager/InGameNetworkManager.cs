@@ -3,8 +3,8 @@ using Cysharp.Threading.Tasks;
 using Fusion;
 using R3;
 using Script.Network.Player;
-using Script.Network.Utility;
 using Script.UI;
+using Script.Utility;
 using UnityEngine;
 
 namespace Script.Network.Manager
